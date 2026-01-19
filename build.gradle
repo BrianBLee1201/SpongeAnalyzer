@@ -73,3 +73,12 @@ tasks.register("deleteRunWorld", Delete) {
 tasks.named("runServer") {
     finalizedBy("deleteRunWorld")
 }
+
+// DEBUGGING: Enable remote debugging on server run
+// loom {
+//   runs {
+//     server {
+//       vmArg "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"
+//     }
+//   }
+// }

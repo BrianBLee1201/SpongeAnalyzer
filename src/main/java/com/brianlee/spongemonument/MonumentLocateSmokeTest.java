@@ -91,18 +91,15 @@ public final class MonumentLocateSmokeTest {
             foundCount++;
             var id = structureRegistry.getId(foundStructure);
             // Scan the monument area for wet sponges (Carpet-style world inspection)
-            int wetSponges = MonumentSpongeScanner.countWetSponges(world, foundPos);
-            int spongeRooms = MonumentSpongeScanner.inferSpongeRooms(wetSponges);
+            int spongeRooms = MonumentLayoutAnalyzer.countSpongeRoomsFromStart(world, foundChunk, foundStructure);
             results.add(new MonumentResult(
                 foundPos.getX(),
                 foundPos.getZ(),
-                wetSponges,
                 spongeRooms
             ));
 
             log.info(
-                    "[SpongeMonument]   -> wetSponges={} inferredSpongeRooms={}",
-                    wetSponges,
+                    "[SpongeMonument]   -> inferredSpongeRooms={}",
                     spongeRooms
             );
             log.info(
@@ -128,7 +125,7 @@ public final class MonumentLocateSmokeTest {
 
         results.sort(
             Comparator
-                .comparingInt(MonumentResult::wetSponges).reversed()
+                .comparingInt(MonumentResult::spongeRooms).reversed()
                 .thenComparingLong(MonumentResult::distanceSq)
         );
 
@@ -150,12 +147,11 @@ public final class MonumentLocateSmokeTest {
         Path out = baseDir.resolve("results.csv");
 
         try (BufferedWriter w = Files.newBufferedWriter(out)) {
-            w.write("x,z,wet_sponges,inferred_sponge_rooms\n");
+            w.write("x,z,inferred_sponge_rooms\n");
             for (MonumentResult r : results) {
                 w.write(
                         r.x() + "," +
                         r.z() + "," +
-                        r.wetSponges() + "," +
                         r.spongeRooms() + "\n"
                 );
             }

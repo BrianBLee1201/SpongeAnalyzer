@@ -132,7 +132,7 @@ public class SpongeMonumentMod implements ModInitializer {
                 overworld,
                 new BlockPos(0, 64, 0),
                 20000,
-                25,
+                100,
                 true
         );
     }
