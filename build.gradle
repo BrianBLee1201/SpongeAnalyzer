@@ -1,0 +1,75 @@
+plugins {
+	id 'fabric-loom' version '1.15.0-alpha.6'
+	id 'maven-publish'
+}
+
+group = "com.brianlee"
+version = "0.0.1"
+
+repositories {
+	// Loom adds the main repos automatically, but keeping this is fine.
+	maven { url = "https://maven.fabricmc.net/" }
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)
+	}
+}
+
+tasks.withType(JavaCompile).configureEach {
+	options.encoding = "UTF-8"
+	// optional but nice for debugging
+	options.release = 21
+}
+
+// Pass -Dsponge.seed from Gradle into the Loom-run server JVM (runServer / runClient)
+tasks.withType(JavaExec).configureEach {
+    def seed = System.getProperty("sponge.seed")
+    if (seed != null) {
+        systemProperty "sponge.seed", seed
+    }
+}
+
+tasks.withType(JavaExec).configureEach {
+    systemProperty "spongemonument.projectDir", project.projectDir.absolutePath
+}
+
+tasks.named("runServer") {
+    doFirst {
+        def seed = System.getProperty("sponge.seed")
+        if (seed == null) return
+
+        def propsFile = file("run/server.properties")
+        propsFile.parentFile.mkdirs()
+
+        def props = new Properties()
+        if (propsFile.exists()) {
+            propsFile.withInputStream { props.load(it) }
+        }
+
+        props.setProperty("level-seed", seed)
+        props.setProperty("max-tick-time", "-1")
+
+        propsFile.withOutputStream { out ->
+            props.store(out, "Updated by SpongeMonument runServer")
+        }
+
+        println "[SpongeMonument] Wrote run/server.properties level-seed=" + seed
+    }
+}
+
+tasks.register("deleteRunWorld", Delete) {
+    delete file("run/world")
+}
+
+tasks.named("runServer") {
+    finalizedBy("deleteRunWorld")
+}

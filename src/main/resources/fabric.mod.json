@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "spongemonument",
+  "version": "0.0.1",
+  "name": "SpongeMonument",
+  "description": "Find ocean monuments and (eventually) predict sponge rooms from a seed.",
+  "authors": ["Brian Lee"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "com.brianlee.spongemonument.SpongeMonumentMod"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.18.4",
+    "minecraft": "1.21.11",
+    "fabric-api": "*"
+  }
+}
