@@ -185,6 +185,8 @@ Saving thousands of generated chunks can take **longer than the analysis itself*
 
 5. **Does this modify my real worlds:** No. SpongeAnalyzer uses a **temporary development world only**.
 
+6. **I am getting the `Failed to load eula.txt` error:** Head to `run/eula.txt`. Replace `eula=false` to `eula=true`. Save and rerun the command.
+
 ---
 
 ## Technical Notes
