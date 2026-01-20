@@ -40,6 +40,21 @@ tasks.withType(JavaExec).configureEach {
 
 tasks.withType(JavaExec).configureEach {
     systemProperty "spongemonument.projectDir", project.projectDir.absolutePath
+    // Forward SpongeAnalyzer runtime knobs, if provided
+    [
+        "sponge.seed",
+        "sponge.maxResults",
+        "sponge.radiusBlocks",
+        "sponge.stopServerAfter",
+        "sponge.port",
+        "sponge.cleanWorldOnStart",
+        "sponge.logSpongeRoomsOnly"
+    ].each { key ->
+        def v = System.getProperty(key)
+        if (v != null) {
+            systemProperty key, v
+        }
+    }
 }
 
 tasks.named("runServer") {

@@ -126,6 +126,18 @@ Example:
 ./gradlew -Dsponge.seed=-2727269088507749507 runServer
 ```
 
+### Configuring Number of Monuments to Search
+
+The number of monuments analyzed can be configured at runtime with the `-Dsponge.maxResults` flag. By default, the tool analyzes up to 100 monuments, but this can be increased to scan more monuments as needed.
+
+You can also control the search radius and server shutdown behavior using additional flags.
+
+Example:
+
+```bash
+./gradlew -Dsponge.seed=-2727269088507749507 -Dsponge.maxResults=1000 runServer
+```
+
 ### Common Optional Flags
 
 | Flag | Description |
@@ -133,6 +145,12 @@ Example:
 | `-Dsponge.seed` | **Required.** World seed to analyze |
 | `-Dsponge.port` | Server port (default: 25565) |
 | `-Dsponge.cleanWorldOnStart=true` | Deletes dev world before run |
+| `-Dsponge.maxResults` | Maximum number of monuments to analyze (default: 100) |
+| `-Dsponge.radiusBlocks` | Search radius in blocks around the center position (default: 200000) |
+| `-Dsponge.stopServerAfter` | Whether the server should stop after analysis (`true` or `false`, default: `false`) |
+| `-Dsponge.logSpongeRoomsOnly` | `1` = log only monuments with sponge rooms (default), `0` = log all monuments |
+
+The `radiusBlocks` flag controls *how far* from the world center (0,0) monuments are searched, while `maxResults` controls *how many* monuments are analyzed. These two limits are independent; analysis will stop when either limit is reached, so both may constrain the results.
 
 ### Output
 
@@ -223,5 +241,3 @@ Minecraft’s structure generation rules and internal constants can vary between
 ### Performance and Scalability Goals
 
 To handle tens of thousands of monument candidates efficiently, SpongeAnalyzer aims to leverage parallel, math-only computation that bypasses any chunk or world IO entirely. By avoiding expensive world loading and block scanning, the tool can scale to analyze vast areas or multiple seeds quickly. This performance-driven approach draws inspiration from the Slimefinder project, which demonstrated the power of pure math-based structure location analysis. Achieving these goals will establish SpongeAnalyzer as a fast, scalable, and practical tool for the Minecraft community.
-
----

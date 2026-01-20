@@ -129,13 +129,19 @@ public class SpongeMonumentMod implements ModInitializer {
 
         LOGGER.info("[SpongeMonument] Server started. Overworld seed = {}", actualSeed);
 
+        int radiusBlocks = Integer.getInteger("sponge.radiusBlocks", 200000);
+        int maxResults   = Integer.getInteger("sponge.maxResults", 100);
+        if (radiusBlocks <= 0) radiusBlocks = 200000;
+        if (maxResults <= 0) maxResults = 100;
+        boolean stopServerAfter = Boolean.parseBoolean(System.getProperty("sponge.stopServerAfter", "false"));
+
         MonumentLocateSmokeTest.runEnumerate(
                 server,
                 overworld,
                 new BlockPos(0, 64, 0),
-                200000,
-                100,
-                false
+                radiusBlocks,
+                maxResults,
+                stopServerAfter
         );
 
         // Dev-only: this project treats the run/world as disposable output.

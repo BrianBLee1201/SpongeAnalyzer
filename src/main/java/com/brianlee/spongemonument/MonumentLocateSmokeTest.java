@@ -1,6 +1,21 @@
 package com.brianlee.spongemonument;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import org.slf4j.Logger;
+
 import com.mojang.datafixers.util.Pair;
+
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.entry.RegistryEntry;
@@ -14,20 +29,6 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.gen.StructureAccessor;
 import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.structure.Structure;
-import org.slf4j.Logger;
-
-import net.fabricmc.loader.api.FabricLoader;
-
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 public final class MonumentLocateSmokeTest {
     private MonumentLocateSmokeTest() {}
@@ -53,6 +54,9 @@ public final class MonumentLocateSmokeTest {
     ) {
         Logger log = SpongeMonumentMod.LOGGER;
         List<MonumentResult> results = new ArrayList<>();
+
+        final boolean logSpongeRoomsOnly =
+                !"0".equals(System.getProperty("sponge.logSpongeRoomsOnly", "1"));
 
         // locateStructure radius is in CHUNKS, not blocks. (Ceiling div)
         int radiusChunks = Math.max(1, (radiusBlocks + 15) / 16);
@@ -98,17 +102,11 @@ public final class MonumentLocateSmokeTest {
                 spongeRooms
             ));
 
-            log.info(
-                    "[SpongeMonument]   -> inferredSpongeRooms={}",
-                    spongeRooms
-            );
-            log.info(
-                "[SpongeMonument] #{} at (x={}, z={}) structure={}",
-                foundCount,
-                foundPos.getX(),
-                foundPos.getZ(),
-                (id == null ? "<unknown>" : id.toString())
-            );
+            if (!logSpongeRoomsOnly || spongeRooms > 0) {
+                log.info("[SpongeMonument]   -> inferredSpongeRooms={}", spongeRooms);
+                log.info("[SpongeMonument] #{} at (x={}, z={}) structure={}",
+                        foundCount, foundPos.getX(), foundPos.getZ(), (id == null ? "<unknown>" : id.toString()));
+            }
 
             // Mark as “referenced” so skipReferencedStructures will avoid it next time.  [oai_citation:2‡Maven FabricMC](https://maven.fabricmc.net/docs/yarn-1.21.11%2Bbuild.4/net/minecraft/world/gen/StructureAccessor.html)
             List<StructureStart> starts = accessor.getStructureStarts(foundChunk, s -> s == foundStructure);
