@@ -7,9 +7,7 @@ import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.chunk.ChunkStatus;
 import net.minecraft.world.gen.StructureAccessor;
 import net.minecraft.world.gen.structure.Structure;
-import net.minecraft.block.Blocks;
 import net.minecraft.util.math.BlockBox;
-import net.minecraft.util.math.BlockPos;
 
 import java.lang.reflect.Field;
 import java.util.List;
@@ -27,39 +25,6 @@ public final class MonumentLayoutAnalyzer {
         } catch (Throwable ignored) {
             return null;
         }
-    }
-
-    private static int countWetSpongesInBox(ServerWorld world, BlockBox bb) {
-        if (world == null || bb == null) return 0;
-
-        // Ocean monument sponges typically appear between ~Y40..55, but we keep it generic and clamp to the box.
-        int minX = bb.getMinX();
-        int maxX = bb.getMaxX();
-        int minY = bb.getMinY();
-        int maxY = bb.getMaxY();
-        int minZ = bb.getMinZ();
-        int maxZ = bb.getMaxZ();
-
-        // Safety: avoid pathological huge scans
-        long volume = (long) (maxX - minX + 1) * (long) (maxY - minY + 1) * (long) (maxZ - minZ + 1);
-        if (volume > 2_000_000L) {
-            // Too large to be a single room; bail out.
-            return 0;
-        }
-
-        int count = 0;
-        BlockPos.Mutable m = new BlockPos.Mutable();
-        for (int y = minY; y <= maxY; y++) {
-            for (int x = minX; x <= maxX; x++) {
-                for (int z = minZ; z <= maxZ; z++) {
-                    m.set(x, y, z);
-                    if (world.getBlockState(m).isOf(Blocks.WET_SPONGE)) {
-                        count++;
-                    }
-                }
-            }
-        }
-        return count;
     }
 
     public static void debugMonumentBaseInternals(StructurePiece piece) {
@@ -186,20 +151,17 @@ public final class MonumentLayoutAnalyzer {
                 roomIndex = tryGetIntField(setting, "roomIndex");
             }
 
-            // Detect sponge content by scanning only the room bounding box.
-            int wetInRoom = 0;
-            if (bb != null) {
-                wetInRoom = countWetSpongesInBox(world, bb);
-            }
-            boolean isSpongeRoom = wetInRoom > 0;
+            // Sponge-room inference (fast): the generated monument layout includes a SimpleRoomTop
+            // piece for each sponge room. No block scanning needed.
+            boolean isSpongeRoom = simple.equals("SimpleRoomTop") || piece.getClass().getName().contains("SimpleRoomTop");
+
             if (isSpongeRoom) {
                 spongeRoomCount++;
                 // Only log sponge rooms
                 SpongeMonumentMod.LOGGER.info(
-                        "[MonumentDebug] spongeRoom idx={} class={} wetSponges={} roomIndex={} bb={}",
+                        "[MonumentDebug] spongeRoom idx={} class={} roomIndex={} bb={}",
                         idx,
                         simple,
-                        wetInRoom,
                         roomIndex,
                         bb
                 );
