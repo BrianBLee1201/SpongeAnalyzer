@@ -1,0 +1,19 @@
+# Gradle
+.gradle/
+build/
+
+# Loom / dev runtime
+run/
+logs/
+crash-reports/
+
+# OS/editor
+.DS_Store
+.vscode/
+
+# Outputs
+results.csv
+*.log
+
+# Downloaded archives
+*.zip
