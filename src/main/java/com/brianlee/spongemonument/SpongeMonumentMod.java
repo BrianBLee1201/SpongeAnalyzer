@@ -18,6 +18,8 @@ import java.util.Comparator;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 
+import java.util.concurrent.TimeUnit;
+
 public class SpongeMonumentMod implements ModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("SpongeMonument");
@@ -131,10 +133,26 @@ public class SpongeMonumentMod implements ModInitializer {
                 server,
                 overworld,
                 new BlockPos(0, 64, 0),
-                20000,
+                200000,
                 100,
-                true
+                false
         );
+
+        // Dev-only: this project treats the run/world as disposable output.
+        // Always hard-exit after the analysis to skip the expensive save-on-stop phase.
+        // NOTE: Runtime.halt(...) bypasses shutdown hooks (including world-save), which is exactly what we want for disposable dev worlds.
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
+            LOGGER.info("[SpongeMonument] Analysis complete; hard-exiting JVM (skipping world save). ");
+
+            // Give the logger a moment to flush to console before halting.
+            new Thread(() -> {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(200);
+                } catch (InterruptedException ignored) {
+                }
+                Runtime.getRuntime().halt(0);
+            }, "SpongeMonument-HardExit").start();
+        }
     }
 
     private void onServerStopped(MinecraftServer server) {

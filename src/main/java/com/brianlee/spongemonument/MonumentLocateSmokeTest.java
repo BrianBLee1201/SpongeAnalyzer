@@ -169,7 +169,7 @@ public final class MonumentLocateSmokeTest {
         // Request a normal stop on the server thread.
         server.execute(() -> {
             log.info("[SpongeMonument] Smoke test complete; stopping dev server.");
-            server.stop(false);
+            System.exit(0);
         });
 
         // In dev runs, chunk scanning can make the save-on-stop phase very slow.
