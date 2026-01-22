@@ -80,6 +80,42 @@ World saving is intentionally skipped to avoid multi-minute shutdown delays when
 - **Fabric Loom:** 1.15.0-alpha.6
 - **OS:** macOS / Linux / Windows (tested primarily on macOS)
 
+### Java 21 and Gradle configuration
+
+SpongeAnalyzer requires Java 21 to run correctly. To ensure Gradle uses Java 21, follow these steps:
+
+1. **Install Java 21** on your system. You can download it from [Adoptium](https://adoptium.net/) or your preferred JDK provider.
+
+2. **Configure Gradle to use Java 21** by setting the `org.gradle.java.home` property. You can do this in one of the following ways:
+
+   - **Option A: Set in `gradle.properties`**
+
+     Create or edit the `gradle.properties` file in the project root and add:
+
+     ```
+     org.gradle.java.home=/path/to/java21
+     ```
+
+     Replace `/path/to/java21` with the absolute path to your Java 21 installation directory.
+
+   - **Option B: Set as an environment variable**
+
+     Export the `JAVA_HOME` environment variable pointing to Java 21 before running Gradle:
+
+     ```bash
+     export JAVA_HOME=/path/to/java21
+     ./gradlew ...
+     ```
+
+3. **Verify Gradle is using Java 21** by running:
+
+   ```bash
+   ./gradlew -version
+   ```
+
+   The output should indicate Java 21 as the JVM version.
+
+Ensuring Gradle uses Java 21 avoids compatibility issues and guarantees SpongeAnalyzer runs as intended.
 ---
 
 ## Installation
