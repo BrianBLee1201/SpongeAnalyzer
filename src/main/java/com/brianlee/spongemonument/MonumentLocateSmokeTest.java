@@ -9,25 +9,18 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 
 import org.slf4j.Logger;
 
-import com.mojang.datafixers.util.Pair;
 
-import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.registry.Registry;
 import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.registry.entry.RegistryEntryList;
-import net.minecraft.registry.tag.StructureTags;
+import net.minecraft.registry.RegistryKey;
+import net.minecraft.util.Identifier;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.structure.StructureStart;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.gen.StructureAccessor;
-import net.minecraft.world.gen.chunk.ChunkGenerator;
 import net.minecraft.world.gen.structure.Structure;
 
 public final class MonumentLocateSmokeTest {
@@ -60,62 +53,70 @@ public final class MonumentLocateSmokeTest {
 
         // locateStructure radius is in CHUNKS, not blocks. (Ceiling div)
         int radiusChunks = Math.max(1, (radiusBlocks + 15) / 16);
+        // For now, I define radiusChunks in a square, not in a circle
 
         Registry<Structure> structureRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.STRUCTURE);
-        RegistryEntryList<Structure> targets = structureRegistry.getOrThrow(StructureTags.ON_OCEAN_EXPLORER_MAPS);
 
-        ChunkGenerator generator = world.getChunkManager().getChunkGenerator();
-        StructureAccessor accessor = world.getStructureAccessor();
+        // Resolve the structure instance once; it is constant for monuments.
+        RegistryKey<Structure> monumentKey = RegistryKey.of(RegistryKeys.STRUCTURE, Identifier.of("minecraft", "monument"));
+        Structure monumentStructure = structureRegistry.getOrThrow(monumentKey).value();
+
+        // locateStructure radius is in CHUNKS, not blocks. (Ceiling div)
+        ChunkPos centerChunk = new ChunkPos(center);
+        List<ChunkPos> candidates = OceanMonumentCoords.findMonumentStartChunks(
+                world,
+                centerChunk,
+                radiusChunks,
+                maxResults
+        );
 
         log.info("[SpongeMonument] Enumerating ocean monuments from (x={}, z={}) (radius={} blocks ~= {} chunks), maxResults={}",
                 center.getX(), center.getZ(), radiusBlocks, radiusChunks, maxResults);
+        log.info("[SpongeMonument] Found {} candidate monument start chunk(s) to analyze.", candidates.size());
 
         Set<Long> seenChunks = new HashSet<>();
         int foundCount = 0;
 
-        for (int i = 0; i < maxResults; i++) {
-            // This returns both position + WHICH structure was found.  [oai_citation:1‡Maven FabricMC](https://maven.fabricmc.net/docs/yarn-1.21.11%2Bbuild.4/net/minecraft/world/gen/chunk/ChunkGenerator.html)
-            Pair<BlockPos, RegistryEntry<Structure>> hit =
-                    generator.locateStructure(world, targets, center, radiusChunks, true);
-
-            if (hit == null) break;
-
-            BlockPos foundPos = hit.getFirst();
-            Structure foundStructure = hit.getSecond().value();
-
-            ChunkPos foundChunk = new ChunkPos(foundPos);
+        for (ChunkPos foundChunk : candidates) {
             long key = foundChunk.toLong();
 
             // Safety against any weird repeats.
             if (!seenChunks.add(key)) {
-                log.warn("[SpongeMonument] Duplicate hit at chunk {} — stopping to avoid a loop.", foundChunk);
-                break;
+                continue;
             }
 
-            foundCount++;
-            var id = structureRegistry.getId(foundStructure);
-            // Scan the monument area for wet sponges (Carpet-style world inspection)
-            int spongeRooms = MonumentLayoutAnalyzer.countSpongeRoomsFromStart(world, foundChunk, foundStructure);
-            results.add(new MonumentResult(
-                foundPos.getX(),
-                foundPos.getZ(),
-                spongeRooms
-            ));
+            // Chunkbase reports coordinates at chunk center (+8, +8) compared to chunk start.
+            // In my code, we want the chunk start position, so we will not need to add offsets.
+            BlockPos foundPos = foundChunk.getStartPos().add(0, 0, 0);
 
-            if (!logSpongeRoomsOnly || spongeRooms > 0) {
-                log.info("[SpongeMonument]   -> inferredSpongeRooms={}", spongeRooms);
-                log.info("[SpongeMonument] #{} at (x={}, z={}) structure={}",
-                        foundCount, foundPos.getX(), foundPos.getZ(), (id == null ? "<unknown>" : id.toString()));
-            }
 
-            // Mark as “referenced” so skipReferencedStructures will avoid it next time.  [oai_citation:2‡Maven FabricMC](https://maven.fabricmc.net/docs/yarn-1.21.11%2Bbuild.4/net/minecraft/world/gen/StructureAccessor.html)
-            List<StructureStart> starts = accessor.getStructureStarts(foundChunk, s -> s == foundStructure);
-            if (starts.isEmpty()) {
-                log.warn("[SpongeMonument] Could not resolve StructureStart(s) for {}; stopping.", foundChunk);
-                break;
+            var id = structureRegistry.getId(monumentStructure);
+            int spongeRooms = MonumentLayoutAnalyzer.countSpongeRoomsFromStart(world, foundChunk, monumentStructure); // Responsible for heap problem
+            if (spongeRooms >= 0){            
+                foundCount++;
+                results.add(new MonumentResult(
+                        foundPos.getX(),
+                        foundPos.getZ(),
+                        spongeRooms
+                ));
+
+                if (!logSpongeRoomsOnly || spongeRooms > 0) {
+                    log.info("[SpongeMonument]   -> inferredSpongeRooms={}", spongeRooms);
+                    log.info("[SpongeMonument] #{} at (x={}, z={}) structure={} ",
+                            foundCount,
+                            foundPos.getX(),
+                            foundPos.getZ(),
+                            (id == null ? "<unknown>" : id.toString()));
+                }
+
+                if (foundCount >= maxResults) {
+                    break;
+                }
             }
-            for (StructureStart start : starts) {
-                accessor.incrementReferences(start);
+            else{
+                log.info("[SpongeMonument]   -> No valid monument structure start found at (x={}, z={})",
+                        foundPos.getX(),
+                        foundPos.getZ());
             }
         }
 
@@ -169,35 +170,6 @@ public final class MonumentLocateSmokeTest {
             log.info("[SpongeMonument] Smoke test complete; stopping dev server.");
             System.exit(0);
         });
-
-        // In dev runs, chunk scanning can make the save-on-stop phase very slow.
-        // Add a fail-safe: if the server hasn't exited after a while, force an exit.
-        // (This avoids leaving Gradle's runServer task hanging forever.)
-        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
-            Thread t = new Thread(() -> {
-                try {
-                    TimeUnit.SECONDS.sleep(30);
-                } catch (InterruptedException ignored) {
-                    return;
-                }
-
-                if (!server.isStopped()) {
-                    log.warn("[SpongeMonument] Server still stopping after 30s; forcing shutdown to avoid hang.");
-                    try {
-                        server.shutdown();
-                    } catch (Throwable ignored) {
-                        // ignore
-                    }
-                    try {
-                        System.exit(0);
-                    } catch (Throwable ignored) {
-                        // ignore
-                    }
-                }
-            }, "SpongeMonument-StopFailsafe");
-            t.setDaemon(true);
-            t.start();
-        }
     }
 
 }

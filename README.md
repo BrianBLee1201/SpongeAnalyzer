@@ -1,16 +1,18 @@
 # SpongeAnalyzer
 
-SpongeAnalyzer is a **Fabric-based Minecraft analysis tool** that locates ocean monuments **and infers the number of sponge rooms inside each monument** — without scanning blocks in the world.
+SpongeAnalyzer is a **Fabric-based Minecraft analysis tool** that locates ocean monuments **and infers the number of sponge rooms inside each monument**. This tool avoids scanning blocks in the overworld.
 Current existing tools such as Chunkbase locate ocean monuments and report monument coordinates, but unlike them, SpongeAnalyzer answers a more practical question:
 
 > **Is this monument worth raiding?**
 
-Sponge rooms are the primary renewable source of wet sponges in survival gameplay, which are essential for draining large bodies of water, building trenches, and constructing farms (e.g., squid farms). Sponges are faster to drain water than placing gravity blocks to clear it, so the only way to get them is to raid the ocean monuments. However, **ocean monuments do not guarantee sponge rooms**.
+Sponge rooms are the primary source of wet sponges in survival gameplay. Sponges are essential for draining large bodies of water, building trenches, and constructing farms (e.g., squid farms). Sponges are faster to drain water than placing gravity blocks to clear it, so the only way to get them is to raid the ocean monuments. However, **ocean monuments do not guarantee sponge rooms**.
 
 From empirical analysis of thousands of monuments:
-- Out of 2000 monuments, **435 contained zero sponge rooms**, which is roughly **21.75% of monuments with no sponge rooms at all**
-- This means most monuments contain **0–3 sponge rooms**
-- Currently, SpongeAnalyzer identified a monument with **8 sponge rooms**, exceeding commonly assumed limits. 
+- Out of 10000 monuments, **2266 contained zero sponge rooms**, which is roughly **22.66% of monuments with no sponge rooms at all**
+- This means roughly 93.72% monuments contain **0–3 sponge rooms**
+- Currently, SpongeAnalyzer identified a monument with **8 sponge rooms**, exceeding commonly assumed limits (some people asserted the max is 7, but now it is changed). 
+
+Before this tool exists, the expected number of sponge rooms is ~1.5. Since there is ~30 wet sponges in every sponge room, this means you end up getting an average of 45 wet sponges every time you raided an ocean monument. This means you had no way of knowing whether the monument has sponge rooms, and you could get unlucky, for example, for raiding 10 ocean monuments but has no sponge rooms.
 
 ---
 
@@ -25,22 +27,22 @@ SpongeAnalyzer helps players and technical users **pre-filter monuments** and fo
 
 ---
 
-## Key Technical Discovery (Core Innovation)
+## Key Technical Discovery for counting Sponge Rooms (Core Innovation)
 
-### ❌ Naive Approach (Too Slow)
+### Naive Approach (Too Slow)
 
 I wanted to scan a 58x58 block area from Y-levels 40 to 63 and then count `WET_SPONGE` blocks using `getBlockState()`, but the problem with this approach is that it is computationally expensive and required loading many chunks.
 
-### ✅ Structure-based Insight (Fast & Efficient)
+### Structure-based Insight (Fast & Efficient)
 
 Through debugging and inspection of Minecraft's structure data, I finally figured which structure is responsible for generating sponge rooms.
 
-Ocean monuments are generated using a fixed internal structure layout composed of **33 structure pieces**.
+Ocean monuments are generated using a fixed internal structure layout composed of **33 structure pieces**. Not all pieces are available. Each available piece is a vertex, and there is an edge (an opening) that connects to another piece, effectively creating a maze.
 
 While community documentation (e.g.  
 https://minecraft.fandom.com/wiki/Ocean_Monument/Structure) describes monument size and chambers, it does **not** document internal room *types*.
 
-### 🔬 Reverse-Engineered Insight
+### Reverse-Engineered Insight
 
 Through structure introspection and debugging, the following was discovered:
 
@@ -116,6 +118,7 @@ SpongeAnalyzer requires Java 21 to run correctly. To ensure Gradle uses Java 21,
    The output should indicate Java 21 as the JVM version.
 
 Ensuring Gradle uses Java 21 avoids compatibility issues and guarantees SpongeAnalyzer runs as intended.
+
 ---
 
 ## Installation
@@ -222,7 +225,7 @@ This confirms that high-sponge monuments exist and can be systematically located
 
 ---
 
-## 🔍 FAQs and Troubleshooting
+## FAQs and Troubleshooting
 
 1. **Does this work on Bedrock Edition:** Unfortunately, no. The code that identifies ocean monuments is completely different from Java.
 2. **Why not just use Chunkbase:** Chunkbase locates monuments but does **not** analyze internal structure layouts or sponge rooms.
@@ -256,15 +259,7 @@ Saving thousands of generated chunks can take **longer than the analysis itself*
 
 ---
 
-## 🔮 Long-Term Goals & Version Support
-
-### Chunkbase-style Pure Math Monument Candidate Generation
-
-One of the primary long-term goals is to implement a pure mathematical approach to monument candidate generation similar to Chunkbase. This method relies on region-based random spread placement, where the world is divided into fixed-size regions, each potentially containing a monument candidate based on spacing and separation rules. By using seed-based pseudo-random number generation (PRNG), we can deterministically compute monument candidate coordinates without loading the world or chunks. This approach drastically reduces computation time and resource usage, enabling large-scale analysis of monument locations purely through math.
-
-### Cubiomes / Amidst-Inspired Offline Analysis
-
-Inspired by tools like Cubiomes and Amidst, another goal is to port or mirror Mojang’s world generation logic to perform offline analysis of monument positions. This involves reimplementing or adapting the worldgen algorithms responsible for structure placement, allowing the tool to predict monument locations and layouts without starting a Minecraft server or loading any game assets. This offline analysis approach significantly speeds up monument discovery and enables integration with other mapping or visualization tools.
+## Long-Term Goals & Version Support
 
 ### Fully Offline Analyzer Mode
 

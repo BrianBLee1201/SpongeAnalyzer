@@ -84,14 +84,33 @@ public class SpongeMonumentMod implements ModInitializer {
         try {
             Path runDir = FabricLoader.getInstance().getGameDir();
             Path props = runDir.resolve("server.properties");
-
-            // Write minimal properties needed; overwrite is fine for dev runs.
-            String content = "level-seed=" + expectedSeed + "\n" +
-                    "server-port=" + port + "\n";
             Files.createDirectories(runDir);
-            Files.writeString(props, content);
 
-            LOGGER.info("[SpongeMonument] Wrote run/server.properties level-seed={} server-port={}", expectedSeed, port);
+            java.util.Properties p = new java.util.Properties();
+
+            // Load existing if present
+            if (Files.exists(props)) {
+                try (var in = Files.newInputStream(props)) {
+                    p.load(in);
+                }
+            }
+
+            // Set/override only what we need
+            p.setProperty("level-seed", Long.toString(expectedSeed));
+            p.setProperty("server-port", Integer.toString(port));
+
+            // Strongly recommended for this tool (mass structure analysis)
+            p.setProperty("view-distance", System.getProperty("sponge.viewDistance", "2"));
+            p.setProperty("simulation-distance", System.getProperty("sponge.simDistance", "2"));
+            // optional: reduce noise + perf
+            p.setProperty("sync-chunk-writes", "false");
+
+            try (var out = Files.newOutputStream(props)) {
+                p.store(out, "SpongeMonument dev server settings");
+            }
+
+            LOGGER.info("[SpongeMonument] Updated run/server.properties seed={} port={} view-distance={} sim-distance={}",
+                expectedSeed, port, p.getProperty("view-distance"), p.getProperty("simulation-distance"));
         } catch (IOException e) {
             LOGGER.error("[SpongeMonument] Failed writing run/server.properties", e);
             throw new IllegalStateException("Failed writing run/server.properties", e);
@@ -129,10 +148,8 @@ public class SpongeMonumentMod implements ModInitializer {
 
         LOGGER.info("[SpongeMonument] Server started. Overworld seed = {}", actualSeed);
 
-        int radiusBlocks = Integer.getInteger("sponge.radiusBlocks", 200000);
-        int maxResults   = Integer.getInteger("sponge.maxResults", 100);
-        if (radiusBlocks <= 0) radiusBlocks = 200000;
-        if (maxResults <= 0) maxResults = 100;
+        int radiusBlocks = Integer.getInteger("sponge.radiusBlocks", 20000);
+        int maxResults = Integer.getInteger("sponge.maxResults", 100);
         boolean stopServerAfter = Boolean.parseBoolean(System.getProperty("sponge.stopServerAfter", "false"));
 
         MonumentLocateSmokeTest.runEnumerate(
