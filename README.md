@@ -183,7 +183,6 @@ Example:
 |----|------------|
 | `-Dsponge.seed` | **Required.** World seed to analyze |
 | `-Dsponge.port` | Server port (default: 25565) |
-| `-Dsponge.cleanWorldOnStart=true` | Deletes dev world before run |
 | `-Dsponge.maxResults` | Maximum number of monuments to analyze (default: 100) |
 | `-Dsponge.radiusBlocks` | Search radius in blocks around the center position (default: 200000) |
 | `-Dsponge.stopServerAfter` | Whether the server should stop after analysis (`true` or `false`, default: `false`) |

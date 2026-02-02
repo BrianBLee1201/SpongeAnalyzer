@@ -30,24 +30,33 @@ tasks.withType(JavaCompile).configureEach {
 	options.release = 21
 }
 
-// Pass -Dsponge.seed from Gradle into the Loom-run server JVM (runServer / runClient)
 tasks.withType(JavaExec).configureEach {
-    def seed = System.getProperty("sponge.seed")
-    if (seed != null) {
-        systemProperty "sponge.seed", seed
-    }
-}
-
-tasks.withType(JavaExec).configureEach {
+    // Always tell the mod where the project root is so it can write results.csv next to the repo.
     systemProperty "spongemonument.projectDir", project.projectDir.absolutePath
-    // Forward SpongeAnalyzer runtime knobs, if provided
+
+    // Forward SpongeAnalyzer runtime knobs, if provided on the Gradle command line.
+    // Example: ./gradlew -Dsponge.seed=111 -Dsponge.radiusBlocks=2000 -Dsponge.maxResults=1000 runServer
     [
+        // Core
         "sponge.seed",
         "sponge.maxResults",
         "sponge.radiusBlocks",
         "sponge.stopServerAfter",
+
+        // Batch / multi-phase pipeline
+        "sponge.mode",
+        "sponge.batchSize",
+        "sponge.batchStart",
+        "sponge.outDir",
+        "sponge.candidatesFile",
+
+        // Candidate generation / filters / debugging
+        "sponge.progressEvery",
+        "sponge.monumentBiomeCheck",
+        "sponge.monumentRefineRadius",
+
+        // Dev conveniences
         "sponge.port",
-        "sponge.cleanWorldOnStart",
         "sponge.logSpongeRoomsOnly"
     ].each { key ->
         def v = System.getProperty(key)
@@ -72,6 +81,7 @@ tasks.named("runServer") {
 
         props.setProperty("level-seed", seed)
         props.setProperty("max-tick-time", "-1")
+        props.setProperty("sync-chunk-writes", "false")
 
         propsFile.withOutputStream { out ->
             props.store(out, "Updated by SpongeMonument runServer")
@@ -97,3 +107,87 @@ tasks.named("runServer") {
 //     }
 //   }
 // }
+
+// Capture stable paths at configuration time (avoids Task.project usage at execution time)
+def SPONGE_REPO_DIR = project.projectDir.absolutePath
+
+// One-command driver: coords -> batch analyses -> merge.
+// This intentionally runs multiple *separate* Gradle/Minecraft processes to avoid trying to restart
+// the Minecraft server in the same JVM.
+tasks.register("runAll") {
+    group = "application"
+    description = "Run coords -> batch analyses -> merge (single command)."
+
+    doLast {
+        def seed = System.getProperty("sponge.seed")
+        if (seed == null || seed.isBlank()) {
+            throw new GradleException("Missing -Dsponge.seed=<seed> (required)")
+        }
+
+        def radiusBlocks = System.getProperty("sponge.radiusBlocks", "20000")
+        def maxResults  = System.getProperty("sponge.maxResults", "100000")
+        def batchSize   = Integer.parseInt(System.getProperty("sponge.batchSize", "1000"))
+        def outDir      = System.getProperty("sponge.outDir", SPONGE_REPO_DIR)
+        def candidates  = System.getProperty("sponge.candidatesFile", "candidates.csv")
+
+        // Optional knobs (forwarded if present)
+        def progressEvery = System.getProperty("sponge.progressEvery")
+        def biomeCheck    = System.getProperty("sponge.monumentBiomeCheck")
+        def refineRadius  = System.getProperty("sponge.monumentRefineRadius")
+
+        def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
+        def gradlewCmd = isWindows ? ["cmd", "/c", "gradlew.bat"] : ["./gradlew"]
+
+        def common = [
+            "-Dsponge.seed=${seed}",
+            "-Dsponge.radiusBlocks=${radiusBlocks}",
+            "-Dsponge.maxResults=${maxResults}",
+            "-Dsponge.batchSize=${batchSize}",
+            "-Dsponge.outDir=${outDir}",
+            "-Dsponge.candidatesFile=${candidates}"
+        ]
+        if (progressEvery != null) common.add("-Dsponge.progressEvery=${progressEvery}")
+        if (biomeCheck != null)    common.add("-Dsponge.monumentBiomeCheck=${biomeCheck}")
+        if (refineRadius != null)  common.add("-Dsponge.monumentRefineRadius=${refineRadius}")
+
+        // Use ExecOperations to avoid deprecated Task.project and to work on newer Gradle versions.
+        def execOps = services.get(org.gradle.process.ExecOperations)
+
+        // 1) Coords phase
+        execOps.exec {
+            commandLine(*gradlewCmd, *common, "-Dsponge.mode=coords", "runServer")
+        }
+
+        // Count candidates (CSV lines minus header)
+        def candFile = new File(outDir, candidates)
+        if (!candFile.exists()) {
+            throw new GradleException("candidates file not found: ${candFile.absolutePath}")
+        }
+        def lines = candFile.readLines("UTF-8")
+        def count = Math.max(0, lines.size() - 1)
+        if (count == 0) {
+            logger.lifecycle("[SpongeMonument] No candidates found; skipping analysis/merge.")
+            return
+        }
+
+        def batches = (int) Math.ceil(count / (double) batchSize)
+        logger.lifecycle("[SpongeMonument] Candidates=${count}, batchSize=${batchSize}, batches=${batches}")
+
+        // 2) Analyze phase (one server process per batch)
+        for (int b = 0; b < batches; b++) {
+            int start = b * batchSize
+            execOps.exec {
+                commandLine(*gradlewCmd, *common,
+                    "-Dsponge.mode=analyze",
+                    "-Dsponge.batchStart=${start}",
+                    "runServer"
+                )
+            }
+        }
+
+        // 3) Merge phase
+        execOps.exec {
+            commandLine(*gradlewCmd, *common, "-Dsponge.mode=merge", "runServer")
+        }
+    }
+}

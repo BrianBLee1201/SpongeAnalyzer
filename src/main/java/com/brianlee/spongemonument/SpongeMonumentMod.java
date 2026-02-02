@@ -67,8 +67,7 @@ public class SpongeMonumentMod implements ModInitializer {
         }
 
         // In dev, optionally delete the world folder before the server creates/loads it.
-        boolean cleanOnStart = Boolean.parseBoolean(System.getProperty("sponge.cleanWorldOnStart", "true"));
-        if (cleanOnStart && FabricLoader.getInstance().isDevelopmentEnvironment()) {
+        if (FabricLoader.getInstance().isDevelopmentEnvironment()) {
             Path runDir = FabricLoader.getInstance().getGameDir();
             Path worldDir = runDir.resolve("world");
             try {
@@ -100,9 +99,8 @@ public class SpongeMonumentMod implements ModInitializer {
             p.setProperty("server-port", Integer.toString(port));
 
             // Strongly recommended for this tool (mass structure analysis)
-            p.setProperty("view-distance", System.getProperty("sponge.viewDistance", "2"));
-            p.setProperty("simulation-distance", System.getProperty("sponge.simDistance", "2"));
-            // optional: reduce noise + perf
+            p.setProperty("view-distance", "2");
+            p.setProperty("simulation-distance", "2");
             p.setProperty("sync-chunk-writes", "false");
 
             try (var out = Files.newOutputStream(props)) {
@@ -141,7 +139,7 @@ public class SpongeMonumentMod implements ModInitializer {
         long actualSeed = overworld.getSeed();
 
         if (expectedSeed != actualSeed) {
-            LOGGER.error("[SpongeMonument] World seed mismatch! Expected {} but world has {}. (Dev world will be cleaned on start if -Dsponge.cleanWorldOnStart=true.)", expectedSeed, actualSeed);
+            LOGGER.error("[SpongeMonument] World seed mismatch! Expected {} but world has {}.)", expectedSeed, actualSeed);
             return;
         }
         // -------------------------------------------------------------
@@ -152,14 +150,42 @@ public class SpongeMonumentMod implements ModInitializer {
         int maxResults = Integer.getInteger("sponge.maxResults", 100);
         boolean stopServerAfter = Boolean.parseBoolean(System.getProperty("sponge.stopServerAfter", "false"));
 
-        MonumentLocateSmokeTest.runEnumerate(
-                server,
-                overworld,
-                new BlockPos(0, 64, 0),
-                radiusBlocks,
-                maxResults,
-                stopServerAfter
-        );
+        String mode = System.getProperty("sponge.mode", "analyze").trim().toLowerCase();
+
+        int batchSize    = Integer.getInteger("sponge.batchSize", 1000);
+        int batchStart   = Integer.getInteger("sponge.batchStart", 0);
+
+        // Where files go (match build.gradle runAll defaults)
+        String outDir = System.getProperty("sponge.outDir");
+        if (outDir == null || outDir.isBlank()) {
+            outDir = System.getProperty("spongemonument.projectDir", System.getProperty("user.dir"));
+        }
+        String candidatesFile = System.getProperty("sponge.candidatesFile", "candidates.csv");
+
+        LOGGER.info("[SpongeMonument] mode={} outDir={} candidatesFile={}", mode, outDir, candidatesFile);
+
+        BlockPos center = new BlockPos(0, 64, 0);
+
+        switch (mode) {
+            case "coords" -> MonumentLocateSmokeTest.runCoordsOnly(
+                    overworld, center, radiusBlocks, maxResults, Path.of(outDir).resolve(candidatesFile)
+            );
+
+            case "analyze" -> MonumentLocateSmokeTest.runAnalyzeBatch(
+                    overworld, Path.of(outDir).resolve(candidatesFile), batchStart, batchSize, Path.of(outDir)
+            );
+
+            case "merge" -> MonumentLocateSmokeTest.runMerge(
+                    Path.of(outDir)
+            );
+
+            default -> {
+                LOGGER.warn("[SpongeMonument] Unknown sponge.mode='{}' (expected coords|analyze|merge). Defaulting to analyze.", mode);
+                MonumentLocateSmokeTest.runAnalyzeBatch(
+                        overworld, Path.of(outDir).resolve(candidatesFile), batchStart, batchSize, Path.of(outDir)
+                );
+            }
+        }
 
         // Dev-only: this project treats the run/world as disposable output.
         // Always hard-exit after the analysis to skip the expensive save-on-stop phase.

@@ -37,16 +37,11 @@ public final class OceanMonumentCoords {
         final long worldSeed = world.getSeed();
 
         // Defaults match vanilla RandomSpread placement for monuments.
-        final int spacing = Integer.getInteger("sponge.monumentSpacing", 32);
-        final int separation = Integer.getInteger("sponge.monumentSeparation", 5);
-        final int salt = Integer.getInteger("sponge.monumentSalt", 10387313);
-        final boolean triangular = Boolean.parseBoolean(System.getProperty("sponge.monumentTriangular", "true"));
-        final boolean buggyCoordMath = Boolean.parseBoolean(System.getProperty("sponge.monumentBuggyCoordMath", "false"));
-
-        if (spacing <= 0) throw new IllegalStateException("Invalid monument spacing: " + spacing);
-        if (separation < 0 || separation >= spacing) {
-            throw new IllegalStateException("Invalid monument separation: " + separation + " (must be 0..spacing-1)");
-        }
+        final int spacing = 32;
+        final int separation = 5;
+        final int salt = 10387313;
+        final boolean triangular = true;
+        final boolean buggyCoordMath = false;
 
         // Determine region bounds overlapping the search radius.
         int minChunkX = centerChunk.x - radiusChunks;
