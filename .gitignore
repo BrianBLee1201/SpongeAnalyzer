@@ -1,19 +1,30 @@
-# Gradle
+# ===== Gradle =====
 .gradle/
 build/
 
-# Loom / dev runtime
+# ===== Fabric Loom =====
+loom-cache/
+remapped_mods/
+source_mappings/
+natives/
+
+# ===== Runtime server data =====
 run/
 logs/
 crash-reports/
 
-# OS/editor
-.DS_Store
-.vscode/
-
-# Outputs
+# ===== Analysis outputs =====
 results.csv
+candidates.csv
+results_part_*.csv
+
+# ===== OS / editor =====
+.DS_Store
+Thumbs.db
 *.log
 
-# Downloaded archives
-*.zip
+# ===== IDE =====
+.idea/
+*.iml
+.vscode/
+bin/

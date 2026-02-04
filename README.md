@@ -5,25 +5,26 @@ Current existing tools such as Chunkbase locate ocean monuments and report monum
 
 > **Is this monument worth raiding?**
 
-Sponge rooms are the primary source of wet sponges in survival gameplay. Sponges are essential for draining large bodies of water, building trenches, and constructing farms (e.g., squid farms). Sponges are faster to drain water than placing gravity blocks to clear it, so the only way to get them is to raid the ocean monuments. However, **ocean monuments do not guarantee sponge rooms**.
+Sponge rooms are the primary source of wet sponges in survival gameplay. Sponges are essential for draining large bodies of water, building trenches, and constructing farms (e.g., squid farms). Sponges are faster to drain water than placing gravity blocks to clear it, so the only way to get them is to raid the ocean monuments. In very niche situations, you may need a lot of wet and dry sponges for creative builds with unique palettes. However, **ocean monuments do not guarantee sponge rooms**.
 
 From empirical analysis of thousands of monuments:
-- Out of 10000 monuments, **2266 contained zero sponge rooms**, which is roughly **22.66% of monuments with no sponge rooms at all**
-- This means roughly 93.72% monuments contain **0–3 sponge rooms**
-- Currently, SpongeAnalyzer identified a monument with **8 sponge rooms**, exceeding commonly assumed limits (some people asserted the max is 7, but now it is changed). 
+- Out of 50000 monuments, **~11299 contained zero sponge rooms**, which is roughly **22.598% of monuments with no sponge rooms at all**
+- This means roughly 93.534% monuments contain **0–3 sponge rooms**. This also means **getting 4+ sponge rooms are rarer.**
+- The most common number of sponge rooms that I calculated is **1, with an experimental probability of 32.975%, followed by 2 (25.220%), 0 (22.597%), and then 3 (12.741%).**
+- Currently, SpongeAnalyzer identified a monument with **10 sponge rooms**, exceeding commonly assumed limits (some people asserted the max is 7, but now it is changed). 
 
-Before this tool exists, the expected number of sponge rooms is ~1.5. Since there is ~30 wet sponges in every sponge room, this means you end up getting an average of 45 wet sponges every time you raided an ocean monument. This means you had no way of knowing whether the monument has sponge rooms, and you could get unlucky, for example, for raiding 10 ocean monuments but has no sponge rooms.
+Before this tool exists, you had no way of knowing whether the monument has sponge rooms. Chances are you could get unlucky, for example, for raiding 10 ocean monuments that has no sponge rooms, only getting 30 wet sponges in return.
 
 ---
 
 ## Why Sponge Rooms Matter
 
-- Elder Guardians only drop **one wet sponge each**
-- Looting does **not** increase sponge drops
-- Large-scale water removal requires **dozens or hundreds** of sponges
-- Raiding monuments without sponge rooms is often a waste of time
+- There is exactly 3 Elder Guardians in each monument, and each Elder Guardian only drops **one wet sponge each**
+- Looting enchantment does **not** increase sponge drops
+- Large-scale water removal requires **dozens or hundreds** of sponges. Clearing with sand/gravel and then digging them would also take more time.
+- Raiding monuments without sponge rooms is not only unlucky but also often a waste of time
 
-SpongeAnalyzer helps players and technical users **pre-filter monuments** and focus only on high-value targets.
+**As of 3 February 2026: while a structure piece I identified was responsible for producing sponge rooms, it is not known if such code exists, so the only way to know is to load a chunk via ticket and then count the number of sponge rooms in a monument.**
 
 ---
 
@@ -31,27 +32,26 @@ SpongeAnalyzer helps players and technical users **pre-filter monuments** and fo
 
 ### Naive Approach (Too Slow)
 
-I wanted to scan a 58x58 block area from Y-levels 40 to 63 and then count `WET_SPONGE` blocks using `getBlockState()`, but the problem with this approach is that it is computationally expensive and required loading many chunks.
+Initially, I wanted to scan a 58x58 block area from Y-levels 40 to 63 and then count `WET_SPONGE` blocks using `getBlockState()`, but the problem with this approach is that it is computationally expensive and requires loading many chunks.
 
 ### Structure-based Insight (Fast & Efficient)
 
 Through debugging and inspection of Minecraft's structure data, I finally figured which structure is responsible for generating sponge rooms.
 
-Ocean monuments are generated using a fixed internal structure layout composed of **33 structure pieces**. Not all pieces are available. Each available piece is a vertex, and there is an edge (an opening) that connects to another piece, effectively creating a maze.
+Ocean monuments are generated using a fixed internal structure layout composed of **33 structure pieces**. However, not all pieces are available. Each available piece is a vertex, and there is an edge (an opening) that connects to another piece, effectively creating a maze.
 
 While community documentation (e.g.  
 https://minecraft.fandom.com/wiki/Ocean_Monument/Structure) describes monument size and chambers, it does **not** document internal room *types*.
 
 ### Reverse-Engineered Insight
 
-Through structure introspection and debugging, the following was discovered:
+Through structure introspection and meticulous debugging, the following was discovered:
 
 > **Every sponge room corresponds to a structure piece of type**  
 > `OceanMonumentGenerator$SimpleRoomTop`
 
 Therefore:
-- The number of sponge rooms in a monument  
-  = the number of `SimpleRoomTop` pieces in its structure layout
+- The number of sponge rooms in a monument = the number of `SimpleRoomTop` pieces in its structure layout
 - No block scanning is required
 - No wet sponge counting is required
 - No world traversal is required beyond structure generation
@@ -62,70 +62,37 @@ This discovery enables **fast, deterministic sponge room inference** directly fr
 
 ## How SpongeAnalyzer Works
 
-1. **Start a disposable Fabric server** (development-only)
-2. **Locate ocean monuments** within a configurable radius
-3. **Extract structure layout data** for each monument
-4. **Count `SimpleRoomTop` pieces**
-5. **Output inferred sponge room counts**
-6. **Fast-exit the JVM without saving the world**
-
-World saving is intentionally skipped to avoid multi-minute shutdown delays when thousands of chunks are loaded.
+1. **Precompute candidate monument coordinates** within the specified radius.
+2. **Divide candidates into batches** according to `batchSize`. See **Running SpongeAnalyzer** section on why we need to use `batchSize`.
+3. **For each batch:**
+   - Analyze each coordinate by extracting structure layout metadata.
+   - Count `SimpleRoomTop` structure pieces to infer sponge rooms.
+4. **Combine batch results** into a final `results.csv`.
+5. **Output sponge room distribution and estimated total wet sponges**, considering elder guardian drops.
 
 ---
 
-## Requirements
+## Minecraft Version Compatibility (1.18+)
 
-- **Java:** 21
+Currently, this tool only works on versions 1.18+. I used the configuration below:
+
 - **Minecraft:** 1.21.11
 - **Fabric Loader:** 0.18.4
 - **Fabric API:** 0.139.5+1.21.11
 - **Fabric Loom:** 1.15.0-alpha.6
-- **OS:** macOS / Linux / Windows (tested primarily on macOS)
 
-### Java 21 and Gradle configuration
-
-SpongeAnalyzer requires Java 21 to run correctly. To ensure Gradle uses Java 21, follow these steps:
-
-1. **Install Java 21** on your system. You can download it from [Adoptium](https://adoptium.net/) or your preferred JDK provider.
-
-2. **Configure Gradle to use Java 21** by setting the `org.gradle.java.home` property. You can do this in one of the following ways:
-
-   - **Option A: Set in `gradle.properties`**
-
-     Create or edit the `gradle.properties` file in the project root and add:
-
-     ```
-     org.gradle.java.home=/path/to/java21
-     ```
-
-     Replace `/path/to/java21` with the absolute path to your Java 21 installation directory.
-
-   - **Option B: Set as an environment variable**
-
-     Export the `JAVA_HOME` environment variable pointing to Java 21 before running Gradle:
-
-     ```bash
-     export JAVA_HOME=/path/to/java21
-     ./gradlew ...
-     ```
-
-3. **Verify Gradle is using Java 21** by running:
-
-   ```bash
-   ./gradlew -version
-   ```
-
-   The output should indicate Java 21 as the JVM version.
-
-Ensuring Gradle uses Java 21 avoids compatibility issues and guarantees SpongeAnalyzer runs as intended.
+As long as the version you are playing on in your world is 1.18+, you will be fine.
 
 ---
 
-## Installation
 
-You must install **Git** manually before running SpongeAnalyzer. If this tool is missing, your terminal may report errors such as `command not found` or fail during the native build step.
+## Requirements
 
-**Git**
+- **Git:** required for cloning my repository, though optional if you happen to download this as a zip file and then extracting it (though not recommended, as I make changes)
+   - If this tool is missing, your terminal may report errors such as `command not found` or fail during the native build step.
+- **Java:** version 21
+
+### Git Installation
 
 - Download: https://git-scm.com/install
 - Windows users: Ensure Git is added to your PATH during installation.
@@ -147,78 +114,153 @@ cd SpongeAnalyzer
 
 No additional dependencies are required beyond Gradle.
 
+### Java 21 and Gradle configuration
+
+SpongeAnalyzer requires **Java 21** to run correctly. Ensure your system has Java 21 installed and configured for Gradle.
+
+### Configuring Java 21 for Gradle
+
+1. **Install Java 21** from [Oracle Website](https://www.oracle.com/java/technologies/downloads/).
+
+2. **Set Java 21 as Gradle's JVM:**
+
+   - **Option A:** Modify `gradle.properties` in the project root (replace `/path` as your actual path to Java 21):
+
+     ```
+     org.gradle.java.home=/path/to/java21
+     ```
+
+   - **Option B:** Set as an environment variable before running Gradle (replace `/path` as your actual path to Java 21):
+
+     ```bash
+     export JAVA_HOME=/path/to/java21
+     ```
+
+3. **Verify Java 21 is used:**
+
+   ```bash
+   ./gradlew -version
+   ```
+
+   If you see something like this (Pay attention to Launcher JVM and Daemon JVM):
+
+   ```bash
+   ------------------------------------------------------------
+   Gradle 9.2.1
+   ------------------------------------------------------------
+
+   Build time:    2025-11-17 13:40:48 UTC
+   Revision:      30ecdc708db275e8f8769ea0620f6dd919a58f76
+
+   Kotlin:        2.2.20
+   Groovy:        4.0.28
+   Ant:           Apache Ant(TM) version 1.10.15 compiled on August 25 2024
+   Launcher JVM:  21.0.10 (Oracle Corporation 21.0.10+8-LTS-217)
+   Daemon JVM:    /opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home (from org.gradle.java.home)
+   OS:            Mac OS X 26.2 aarch64
+   ```
+
+   This means you have installed Java 21 as a JVM version. 
+
 ---
 
-## Running the Analyzer
+## Running SpongeAnalyzer
 
-SpongeAnalyzer is executed via Gradle using JVM flags.
-
-### Basic Usage
+Use the `runAll` Gradle task to perform analysis (do not include []):
 
 ```bash
-./gradlew -Dsponge.seed=<WORLD_SEED> runServer
+./gradlew -Dsponge.seed=<WORLD_SEED> [-Dsponge.radiusBlocks=<RADIUS>] [-Dsponge.maxResults=<MAX_RESULTS>] [-Dsponge.batchSize=<BATCH_SIZE>] runAll
 ```
+
+### Arguments
+
+| Argument                  | Description                                                                                      | Default    |
+|---------------------------|------------------------------------------------------------------------------------------------|------------|
+| `-Dsponge.seed`            | **Required.** The Minecraft world seed to analyze (must be a number).                                             | N/A        |
+| `-Dsponge.radiusBlocks`    | Search radius in blocks (as a square) around the world origin (0,0).                                         | 20000     |
+| `-Dsponge.maxResults`      | Maximum number of ocean monuments to analyze.                                                  | 100000        |
+| `-Dsponge.batchSize`       | Number of monument coordinates processed per batch to control memory usage and avoid heap errors. | 1000       |
 
 Example:
 
 ```bash
-./gradlew -Dsponge.seed=-2727269088507749507 runServer
+./gradlew -Dsponge.seed=-1789333 -Dsponge.radiusBlocks=10000 -Dsponge.maxResults=10000 -Dsponge.batchSize=500
 ```
 
-### Configuring Number of Monuments to Search
+This command:
+- sets seed to -1789333
+- searches the square with endpoints (-10k, -10k), (-10k, 10k), (10k, -10k), and (10k, 10k).
+- sets the ocean monument threshold to 10000 (so if there are more ocean monuments in the selected radius than its threshold, then it does not consider the remaining ocean monuments)
+- sets the `batchSize` to 500, meaning that we partition the whole list from `candidates.csv` into batches of 500 coordinates, then analyze each batch and save into `results_part_*.csv`, where * represents the batch index.
 
-The number of monuments analyzed can be configured at runtime with the `-Dsponge.maxResults` flag. By default, the tool analyzes up to 100 monuments, but this can be increased to scan more monuments as needed.
+**Note:** You will notice that `candidates.csv` and `results_part_*.csv` are produced during the run. **Do not delete them during the run: they are needed so that once all candidates from `candidates.csv` are verified, the tool merges `results_part_*.csv` into a `result.csv`, then automatically deletes `candidates.csv` and all `results_part_*.csv`.**
 
-You can also control the search radius and server shutdown behavior using additional flags.
+### Notes on Batching and Heap Usage
 
-Example:
+- Processing large numbers of monuments at once can cause heap memory errors.
+- Adjust `batchSize` to a value suitable for your system's RAM.
+- Smaller batches reduce memory footprint but increase total runtime. *I highly recommend fine tuning the batch size.*
 
-```bash
-./gradlew -Dsponge.seed=-2727269088507749507 -Dsponge.maxResults=1000 runServer
-```
+---
 
-### Common Optional Flags
+## Output
 
-| Flag | Description |
-|----|------------|
-| `-Dsponge.seed` | **Required.** World seed to analyze |
-| `-Dsponge.port` | Server port (default: 25565) |
-| `-Dsponge.maxResults` | Maximum number of monuments to analyze (default: 100) |
-| `-Dsponge.radiusBlocks` | Search radius in blocks around the center position (default: 200000) |
-| `-Dsponge.stopServerAfter` | Whether the server should stop after analysis (`true` or `false`, default: `false`) |
-| `-Dsponge.logSpongeRoomsOnly` | `1` = log only monuments with sponge rooms (default), `0` = log all monuments |
-
-The `radiusBlocks` flag controls *how far* from the world center (0,0) monuments are searched, while `maxResults` controls *how many* monuments are analyzed. These two limits are independent; analysis will stop when either limit is reached, so both may constrain the results.
-
-### Output
-
-Results are written to:
+The analysis results are written to:
 
 ```
 results.csv
 ```
 
-Format:
+Each line contains:
+
 ```
 x,z,inferred_sponge_rooms
 ```
 
 Example:
+
 ```
 5664,-3904,8
 ```
+
+Results are sorted by descending sponge room count, then by ascending distance from the origin.
+
+In the terminal, you will see the sponge room distribution and estimated total wet sponges, like this:
+
+```
+[SpongeMonument] ===== Sponge room distribution =====
+[SpongeMonument] 10 : 1
+[SpongeMonument] 8 : 8
+[SpongeMonument] 7 : 40
+[SpongeMonument] 6 : 187
+[SpongeMonument] 5 : 846
+[SpongeMonument] 4 : 2933
+[SpongeMonument] 3 : 7911
+[SpongeMonument] 2 : 15660
+[SpongeMonument] 1 : 20475
+[SpongeMonument] 0 : 14031
+[SpongeMonument] Estimated total wet sponges from sponge rooms is (rooms * count * 30): 2788980
+[SpongeMonument] If you taken account for killing 3 elder guardians in an ocean monument, this gives exactly 186276 wet sponges.
+[SpongeMonument] Altogether, you get approximately 2975256 wet sponges.
+```
+
+---
+
+## Biome-Filter False Positives
+
+Due to biome filtering limitations, approximately **0.2%** of candidate coordinates may be false positives (i.e., not actual ocean monuments). This is a minor caveat and does not significantly affect overall analysis accuracy.
 
 ---
 
 ## Notable Discovery
 
-SpongeAnalyzer identified an **8-sponge-room monument**, exceeding commonly believed limits.
+SpongeAnalyzer identified a **10-sponge-room monument**, exceeding commonly believed limits.
 
 - **Minecraft Version:** 1.21.11  
-- **Seed:** `53205569250527877`  
-- **Coordinates:** `x = 5664, z = -3904`
+- **Seed:** `-916397000043815854`  
+- **Coordinates:** `x = -68432, z = -71968`
 
-![An ocean monument with 8 sponge rooms, with wet sponges highlighted in cyan via Advanced xray mod.](images/8_Sponge_Rooms.png)
+![An ocean monument with 10 sponge rooms, with wet sponges highlighted in cyan via Advanced xray mod.](images/10_Sponge_Rooms.png)
 
 This confirms that high-sponge monuments exist and can be systematically located.
 
@@ -234,7 +276,7 @@ This confirms that high-sponge monuments exist and can be systematically located
     * Requires iterating tens of thousands of blocks
     * Causes long shutdown times due to world saving
 
-    Structure-based inference is orders of magnitude faster.
+    Structure-based inference is significantly faster.
 
 4. **Why does the server fast-exit instead of shutting down cleanly:**
 Saving thousands of generated chunks can take **longer than the analysis itself**. The analysis world is disposable, so SpongeAnalyzer intentionally skips saving.
@@ -242,6 +284,9 @@ Saving thousands of generated chunks can take **longer than the analysis itself*
 5. **Does this modify my real worlds:** No. SpongeAnalyzer uses a **temporary development world only**.
 
 6. **I am getting the `Failed to load eula.txt` error:** Head to `run/eula.txt`. Replace `eula=false` to `eula=true`. Save and rerun the command.
+
+7. **Why is `runServer` no longer used:** The previous `runServer` command is deprecated for normal users. `runAll` provides a streamlined, fully automated analysis workflow. Also, `runServer` command does not work if you increase the `-Dsponge.maxResults` and `-Dsponge.radiusBlocks` threshold due to the heap error.
+8. **Can this tool run without internet:** yes. Even loading the Fabric server can be done offline.
 
 ---
 
@@ -262,11 +307,8 @@ Saving thousands of generated chunks can take **longer than the analysis itself*
 
 ### Fully Offline Analyzer Mode
 
-Building upon offline analysis capabilities, we aim to develop a standalone Java main program that accepts a world seed and Minecraft version as input parameters and outputs a `results.csv` file containing inferred sponge room counts for all detected monuments. This mode would eliminate the need to start a Fabric server, removing overhead from server startup and shutdown while improving usability for batch processing or integration into automated pipelines. This fully offline mode will facilitate rapid, large-scale sponge room inference on any supported version.
+Building upon offline analysis capabilities, I aim to develop a standalone Java main program that accepts a world seed and Minecraft version as input parameters and outputs a `results.csv` file containing inferred sponge room counts for all detected monuments. This mode would eliminate the need to start a Fabric server, removing overhead from server startup and shutdown while improving usability for batch processing or integration into automated pipelines. This fully offline mode will facilitate rapid, large-scale sponge room inference on any supported version.
 
-### Version Abstraction and Multi-Version Support
-
-Minecraft’s structure generation rules and internal constants can vary between versions. To maintain compatibility and extend SpongeAnalyzer’s utility, we plan to isolate version-specific constants, structure layouts, and placement rules behind an abstraction layer. This design will allow easy addition of support for multiple Minecraft versions by encapsulating differences in structure piece types, generation parameters, and RNG behavior. Multi-version support ensures SpongeAnalyzer remains relevant and useful across Minecraft’s evolving landscape.
 
 ### Performance and Scalability Goals
 

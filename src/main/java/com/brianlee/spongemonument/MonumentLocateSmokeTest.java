@@ -40,6 +40,40 @@ public final class MonumentLocateSmokeTest {
     ) {
         Logger log = SpongeMonumentMod.LOGGER;
 
+        // ---- CLEANUP STALE INTERMEDIATE FILES ----
+        try {
+            // Delete candidates.csv if it exists
+            if (Files.exists(candidatesOut)) {
+                try {
+                    Files.delete(candidatesOut);
+                    log.info("[SpongeMonument] (coords) Deleted stale file: {}", candidatesOut.getFileName());
+                } catch (IOException e) {
+                    log.warn("[SpongeMonument] (coords) Failed to delete stale file: {}", candidatesOut.getFileName(), e);
+                }
+            }
+            // Delete results_part_*.csv in parent directory
+            Path parentDir = candidatesOut.getParent();
+            if (parentDir != null && Files.exists(parentDir)) {
+                try (var stream = Files.list(parentDir)) {
+                    stream.forEach(p -> {
+                        String name = p.getFileName().toString();
+                        if (name.startsWith("results_part_") && name.endsWith(".csv")) {
+                            try {
+                                Files.deleteIfExists(p);
+                                log.info("[SpongeMonument] (coords) Deleted stale file: {}", p.getFileName());
+                            } catch (IOException e) {
+                                log.warn("[SpongeMonument] (coords) Failed to delete stale file: {}", p.getFileName(), e);
+                            }
+                        }
+                    });
+                } catch (IOException e) {
+                    log.warn("[SpongeMonument] (coords) Cleanup scan failed", e);
+                }
+            }
+        } catch (Exception e) {
+            log.warn("[SpongeMonument] (coords) Exception during cleanup", e);
+        }
+
         int radiusChunks = Math.max(1, (radiusBlocks + 15) / 16);
         ChunkPos centerChunk = new ChunkPos(center);
 
@@ -136,6 +170,11 @@ public final class MonumentLocateSmokeTest {
             if (spongeRooms >= 0) {
                 results.add(new MonumentResult(foundPos.getX(), foundPos.getZ(), spongeRooms));
             }
+            else{
+                log.info("[SpongeMonument] (analyze) No valid monument structure start found at (x={}, z={})",
+                        foundPos.getX(),
+                        foundPos.getZ());
+            }
         }
 
         Path part = outDir.resolve("results_part_" + batchStart + ".csv");
@@ -195,6 +234,30 @@ public final class MonumentLocateSmokeTest {
         } catch (IOException e) {
             log.warn("[SpongeMonument] (merge) Cleanup scan failed", e);
         }
+
+        // ---- SUMMARY STATS ----
+        // Distribution: spongeRooms -> frequency
+        java.util.Map<Integer, Integer> freq = new java.util.HashMap<>();
+        long estimatedWetSponges = 0L;
+        for (MonumentResult r : all) {
+            int rooms = r.spongeRooms();
+            freq.merge(rooms, 1, Integer::sum);
+        }
+
+        // Print distribution sorted by sponge rooms (descending)
+        java.util.List<Integer> keys = new java.util.ArrayList<>(freq.keySet());
+        keys.sort(java.util.Comparator.reverseOrder());
+
+        log.info("[SpongeMonument] ===== Sponge room distribution =====");
+        for (int rooms : keys) {
+            int count = freq.getOrDefault(rooms, 0);
+            log.info("[SpongeMonument] {} : {}", rooms, count);
+            // Each sponge room produces ~30 wet sponges.
+            estimatedWetSponges += (long) rooms * (long) count * 30L;
+        }
+        log.info("[SpongeMonument] Estimated total wet sponges from sponge rooms is (rooms * count * 30): {}", estimatedWetSponges);
+        log.info("[SpongeMonument] If you taken account for killing 3 elder guardians in an ocean monument, this gives exactly {} wet sponges.", 3 * all.size());
+        log.info("[SpongeMonument] Altogether, you get approximately {} wet sponges.", estimatedWetSponges + 3 * all.size());
     }
 
     private static List<MonumentResult> readResultsCsv(Path p) {
@@ -270,6 +333,8 @@ public final class MonumentLocateSmokeTest {
 
             // Safety against any weird repeats.
             if (!seenChunks.add(key)) {
+                log.info("[SpongeMonument] Skipping duplicate candidate chunk at (x={}, z={})",
+                        foundChunk.x, foundChunk.z);
                 continue;
             }
 

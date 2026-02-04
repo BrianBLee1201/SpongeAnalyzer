@@ -148,41 +148,74 @@ public class SpongeMonumentMod implements ModInitializer {
 
         int radiusBlocks = Integer.getInteger("sponge.radiusBlocks", 20000);
         int maxResults = Integer.getInteger("sponge.maxResults", 100);
-        boolean stopServerAfter = Boolean.parseBoolean(System.getProperty("sponge.stopServerAfter", "false"));
+        int batchSize = Integer.getInteger("sponge.batchSize", 1000);
 
-        String mode = System.getProperty("sponge.mode", "analyze").trim().toLowerCase();
+        // Internal orchestration for Gradle's runAll task.
+        // Users should not need to set these manually.
+        String mode = System.getProperty("sponge.mode", "coords").trim().toLowerCase();
+        int batchStart = Integer.getInteger("sponge.batchStart", 0);
 
-        int batchSize    = Integer.getInteger("sponge.batchSize", 1000);
-        int batchStart   = Integer.getInteger("sponge.batchStart", 0);
-
-        // Where files go (match build.gradle runAll defaults)
-        String outDir = System.getProperty("sponge.outDir");
-        if (outDir == null || outDir.isBlank()) {
-            outDir = System.getProperty("spongemonument.projectDir", System.getProperty("user.dir"));
+        // Output files always live at the project root (same convention as results.csv).
+        // runAll will read/write these files between phases.
+        Path baseDir;
+        String projectDirProp = System.getProperty("spongemonument.projectDir");
+        if (projectDirProp != null && !projectDirProp.isBlank()) {
+            baseDir = Path.of(projectDirProp);
+        } else {
+            // Loom's runServer typically runs with working dir = <project>/run
+            Path cwd = Path.of(System.getProperty("user.dir"));
+            if (cwd.getFileName() != null && cwd.getFileName().toString().equalsIgnoreCase("run") && cwd.getParent() != null) {
+                baseDir = cwd.getParent();
+            } else {
+                baseDir = cwd;
+            }
         }
-        String candidatesFile = System.getProperty("sponge.candidatesFile", "candidates.csv");
 
-        LOGGER.info("[SpongeMonument] mode={} outDir={} candidatesFile={}", mode, outDir, candidatesFile);
+        Path candidatesPath = baseDir.resolve("candidates.csv");
+
+        LOGGER.info(
+                "[SpongeMonument] mode={} radiusBlocks={} maxResults={} batchStart={} batchSize={}",
+                mode,
+                radiusBlocks,
+                maxResults,
+                batchStart,
+                batchSize
+        );
 
         BlockPos center = new BlockPos(0, 64, 0);
 
         switch (mode) {
             case "coords" -> MonumentLocateSmokeTest.runCoordsOnly(
-                    overworld, center, radiusBlocks, maxResults, Path.of(outDir).resolve(candidatesFile)
+                    overworld,
+                    center,
+                    radiusBlocks,
+                    maxResults,
+                    candidatesPath
             );
 
             case "analyze" -> MonumentLocateSmokeTest.runAnalyzeBatch(
-                    overworld, Path.of(outDir).resolve(candidatesFile), batchStart, batchSize, Path.of(outDir)
+                    overworld,
+                    candidatesPath,
+                    batchStart,
+                    batchSize,
+                    baseDir
             );
 
             case "merge" -> MonumentLocateSmokeTest.runMerge(
-                    Path.of(outDir)
+                    baseDir
             );
 
             default -> {
-                LOGGER.warn("[SpongeMonument] Unknown sponge.mode='{}' (expected coords|analyze|merge). Defaulting to analyze.", mode);
+                LOGGER.warn(
+                        "[SpongeMonument] Unknown sponge.mode='{}' (expected coords|analyze|merge). Defaulting to analyze.",
+                        mode
+                );
                 MonumentLocateSmokeTest.runAnalyzeBatch(
-                        overworld, Path.of(outDir).resolve(candidatesFile), batchStart, batchSize, Path.of(outDir)
+                        overworld,
+                        candidatesPath,
+                        batchStart,
+                        batchSize,
+                        baseDir
                 );
             }
         }

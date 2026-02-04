@@ -34,40 +34,29 @@ tasks.withType(JavaExec).configureEach {
     // Always tell the mod where the project root is so it can write results.csv next to the repo.
     systemProperty "spongemonument.projectDir", project.projectDir.absolutePath
 
-    // Forward SpongeAnalyzer runtime knobs, if provided on the Gradle command line.
-    // Example: ./gradlew -Dsponge.seed=111 -Dsponge.radiusBlocks=2000 -Dsponge.maxResults=1000 runServer
-    [
-        // Core
-        "sponge.seed",
-        "sponge.maxResults",
-        "sponge.radiusBlocks",
-        "sponge.stopServerAfter",
-
-        // Batch / multi-phase pipeline
-        "sponge.mode",
-        "sponge.batchSize",
-        "sponge.batchStart",
-        "sponge.outDir",
-        "sponge.candidatesFile",
-
-        // Candidate generation / filters / debugging
-        "sponge.progressEvery",
-        "sponge.monumentBiomeCheck",
-        "sponge.monumentRefineRadius",
-
-        // Dev conveniences
-        "sponge.port",
-        "sponge.logSpongeRoomsOnly"
-    ].each { key ->
-        def v = System.getProperty(key)
-        if (v != null) {
-            systemProperty key, v
+    // Forward ALL SpongeAnalyzer runtime knobs without having to maintain a list.
+    // This lets the README document only the common flags, while power users can still add more.
+    System.getProperties().stringPropertyNames().each { key ->
+        if (key == "spongemonument.projectDir" || key.startsWith("sponge.")) {
+            def v = System.getProperty(key)
+            if (v != null) {
+                systemProperty key, v
+            }
         }
     }
 }
 
+// Players should normally use runAll (or analyzeMonuments alias) instead of runServer directly.
 tasks.named("runServer") {
+    group = null
+    description = "(internal) Used by runAll to execute analysis phases."
+
     doFirst {
+        def allow = System.getProperty("sponge.allowRunServer", "0")
+        if (allow != "1") {
+            throw new GradleException("Do not run 'runServer' directly. Use: ./gradlew -Dsponge.seed=<seed> runAll  (If you really need runServer for debugging, add -Dsponge.allowRunServer=1)")
+        }
+
         def seed = System.getProperty("sponge.seed")
         if (seed == null) return
 
@@ -103,7 +92,7 @@ tasks.named("runServer") {
 // loom {
 //   runs {
 //     server {
-//       vmArg "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005"
+//       vmArg "-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=*:5005"
 //     }
 //   }
 // }
@@ -116,7 +105,7 @@ def SPONGE_REPO_DIR = project.projectDir.absolutePath
 // the Minecraft server in the same JVM.
 tasks.register("runAll") {
     group = "application"
-    description = "Run coords -> batch analyses -> merge (single command)."
+    description = "Run coords -> batch analyses -> merge (single command). Requires -Dsponge.seed=<seed>. Optional: -Dsponge.radiusBlocks, -Dsponge.maxResults, -Dsponge.batchSize."
 
     doLast {
         def seed = System.getProperty("sponge.seed")
@@ -127,13 +116,10 @@ tasks.register("runAll") {
         def radiusBlocks = System.getProperty("sponge.radiusBlocks", "20000")
         def maxResults  = System.getProperty("sponge.maxResults", "100000")
         def batchSize   = Integer.parseInt(System.getProperty("sponge.batchSize", "1000"))
-        def outDir      = System.getProperty("sponge.outDir", SPONGE_REPO_DIR)
-        def candidates  = System.getProperty("sponge.candidatesFile", "candidates.csv")
 
-        // Optional knobs (forwarded if present)
-        def progressEvery = System.getProperty("sponge.progressEvery")
-        def biomeCheck    = System.getProperty("sponge.monumentBiomeCheck")
-        def refineRadius  = System.getProperty("sponge.monumentRefineRadius")
+        // Internal paths/files (not user-facing; keep stable to avoid confusing players)
+        def outDir     = SPONGE_REPO_DIR
+        def candidates = "candidates.csv"
 
         def isWindows = System.getProperty("os.name").toLowerCase().contains("win")
         def gradlewCmd = isWindows ? ["cmd", "/c", "gradlew.bat"] : ["./gradlew"]
@@ -146,16 +132,13 @@ tasks.register("runAll") {
             "-Dsponge.outDir=${outDir}",
             "-Dsponge.candidatesFile=${candidates}"
         ]
-        if (progressEvery != null) common.add("-Dsponge.progressEvery=${progressEvery}")
-        if (biomeCheck != null)    common.add("-Dsponge.monumentBiomeCheck=${biomeCheck}")
-        if (refineRadius != null)  common.add("-Dsponge.monumentRefineRadius=${refineRadius}")
 
         // Use ExecOperations to avoid deprecated Task.project and to work on newer Gradle versions.
         def execOps = services.get(org.gradle.process.ExecOperations)
 
         // 1) Coords phase
         execOps.exec {
-            commandLine(*gradlewCmd, *common, "-Dsponge.mode=coords", "runServer")
+            commandLine(*gradlewCmd, *common, "-Dsponge.allowRunServer=1", "-Dsponge.mode=coords", "runServer")
         }
 
         // Count candidates (CSV lines minus header)
@@ -178,6 +161,7 @@ tasks.register("runAll") {
             int start = b * batchSize
             execOps.exec {
                 commandLine(*gradlewCmd, *common,
+                    "-Dsponge.allowRunServer=1",
                     "-Dsponge.mode=analyze",
                     "-Dsponge.batchStart=${start}",
                     "runServer"
@@ -187,7 +171,24 @@ tasks.register("runAll") {
 
         // 3) Merge phase
         execOps.exec {
-            commandLine(*gradlewCmd, *common, "-Dsponge.mode=merge", "runServer")
+            commandLine(*gradlewCmd, *common, "-Dsponge.allowRunServer=1", "-Dsponge.mode=merge", "runServer")
+        }
+
+        // 4) Cleanup intermediate artifacts so future runs don't accidentally mix data.
+        try {
+            def cand = new File(outDir, candidates)
+            if (cand.exists()) cand.delete()
+
+            def dir = new File(outDir)
+            if (dir.exists()) {
+                dir.listFiles()?.each { f ->
+                    if (f.name.startsWith("results_part_") && f.name.endsWith(".csv")) {
+                        f.delete()
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            logger.lifecycle("[SpongeMonument] Cleanup skipped: " + t.getMessage())
         }
     }
 }
