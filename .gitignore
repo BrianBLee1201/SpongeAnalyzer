@@ -17,6 +17,8 @@ crash-reports/
 results.csv
 candidates.csv
 results_part_*.csv
+nether_waypoints.txt
+overworld_waypoints.txt
 
 # ===== OS / editor =====
 .DS_Store

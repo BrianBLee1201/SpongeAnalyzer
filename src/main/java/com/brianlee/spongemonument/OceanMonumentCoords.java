@@ -30,6 +30,7 @@ public final class OceanMonumentCoords {
             ServerWorld world,
             ChunkPos centerChunk,
             int radiusChunks,
+            int excludeRadiusChunks,
             int maxResults
     ) {
         final long worldSeed = world.getSeed();
@@ -41,6 +42,18 @@ public final class OceanMonumentCoords {
         final long salt = 10387313L;
         final boolean triangular = true;
         final boolean buggyCoordMath = false;
+
+
+        // Optional: exclude an inner square (SlimeFinder-style ring search) to speed up large scans.
+        // This only affects candidate generation (coords); analysis still validates structures.
+        if (excludeRadiusChunks < 0) {
+            throw new IllegalStateException("Invalid excludeRadiusChunks: " + excludeRadiusChunks + " (must be >= 0)");
+        }
+        if (excludeRadiusChunks > radiusChunks) {
+            throw new IllegalStateException(
+                    "excludeRadiusChunks (" + excludeRadiusChunks + ") exceeds radiusChunks (" + radiusChunks + ")"
+            );
+        }
 
         // Scan chunk-grid points exactly like Amidst's RegionalStructureProducer:
         // iterate in steps of `spacing` over the square area, call getPossibleLocation(chunkX, chunkZ),
@@ -65,10 +78,15 @@ public final class OceanMonumentCoords {
                     continue;
                 }
 
-                // Keep within the square radius around center (your Slimefinder-style square search).
+                // Keep within the outer square radius around center, and optionally exclude an inner square.
                 int dx = start.x - centerChunk.x;
                 int dz = start.z - centerChunk.z;
-                if (Math.abs(dx) > radiusChunks || Math.abs(dz) > radiusChunks) {
+                int chebyshev = Math.max(Math.abs(dx), Math.abs(dz));
+                if (chebyshev > radiusChunks) {
+                    continue;
+                }
+                if (excludeRadiusChunks > 0 && chebyshev <= excludeRadiusChunks) {
+                    // Exclude inner square (inclusive) so users can scan in rings.
                     continue;
                 }
 

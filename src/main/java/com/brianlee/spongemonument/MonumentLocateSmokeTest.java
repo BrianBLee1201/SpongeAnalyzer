@@ -35,6 +35,7 @@ public final class MonumentLocateSmokeTest {
         ServerWorld world,
         BlockPos center,
         int radiusBlocks,
+        int excludeRadiusBlocks,
         int maxResults,
         Path candidatesOut
     ) {
@@ -75,12 +76,18 @@ public final class MonumentLocateSmokeTest {
         }
 
         int radiusChunks = Math.max(1, (radiusBlocks + 15) / 16);
+        int excludeRadiusChunks = Math.max(0, (excludeRadiusBlocks + 15) / 16);
+        if (excludeRadiusChunks > radiusChunks) {
+            excludeRadiusChunks = radiusChunks;
+        }
         ChunkPos centerChunk = new ChunkPos(center);
 
         List<ChunkPos> candidates = OceanMonumentCoords.findMonumentStartChunks(
-                world, centerChunk, radiusChunks, maxResults
+                world, centerChunk, radiusChunks, excludeRadiusChunks, maxResults
         );
 
+        log.info("[SpongeMonument] (coords) radiusBlocks={} excludeRadiusBlocks={} (chunks: radius={} exclude={})",
+                radiusBlocks, excludeRadiusBlocks, radiusChunks, excludeRadiusChunks);
         log.info("[SpongeMonument] (coords) Found {} candidate monument start chunk(s). Writing to {}",
                 candidates.size(), candidatesOut.toAbsolutePath());
 
@@ -299,12 +306,15 @@ public final class MonumentLocateSmokeTest {
         Logger log = SpongeMonumentMod.LOGGER;
         List<MonumentResult> results = new ArrayList<>();
 
-        final boolean logSpongeRoomsOnly =
-                !"0".equals(System.getProperty("sponge.logSpongeRoomsOnly", "1"));
+        final boolean logSpongeRoomsOnly = true; // Set to true to reduce log spam when many monuments have 0 sponge rooms.
 
         // locateStructure radius is in CHUNKS, not blocks. (Ceiling div)
         int radiusChunks = Math.max(1, (radiusBlocks + 15) / 16);
-        // For now, I define radiusChunks in a square, not in a circle
+        int excludeRadiusBlocks = Integer.getInteger("sponge.excludeRadiusBlocks", 0);
+        int excludeRadiusChunks = Math.max(0, (excludeRadiusBlocks + 15) / 16);
+        if (excludeRadiusChunks > radiusChunks) {
+            excludeRadiusChunks = radiusChunks;
+        }
 
         Registry<Structure> structureRegistry = world.getRegistryManager().getOrThrow(RegistryKeys.STRUCTURE);
 
@@ -318,11 +328,12 @@ public final class MonumentLocateSmokeTest {
                 world,
                 centerChunk,
                 radiusChunks,
+                excludeRadiusChunks,
                 maxResults
         );
 
-        log.info("[SpongeMonument] Enumerating ocean monuments from (x={}, z={}) (radius={} blocks ~= {} chunks), maxResults={}",
-                center.getX(), center.getZ(), radiusBlocks, radiusChunks, maxResults);
+        log.info("[SpongeMonument] Enumerating ocean monuments from (x={}, z={}) (radius={} blocks ~= {} chunks), excludeRadiusBlocks={} (excludeChunks={}), maxResults={}",
+                center.getX(), center.getZ(), radiusBlocks, radiusChunks, excludeRadiusBlocks, excludeRadiusChunks, maxResults);
         log.info("[SpongeMonument] Found {} candidate monument start chunk(s) to analyze.", candidates.size());
 
         Set<Long> seenChunks = new HashSet<>();

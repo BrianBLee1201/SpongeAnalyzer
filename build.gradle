@@ -105,7 +105,7 @@ def SPONGE_REPO_DIR = project.projectDir.absolutePath
 // the Minecraft server in the same JVM.
 tasks.register("runAll") {
     group = "application"
-    description = "Run coords -> batch analyses -> merge (single command). Requires -Dsponge.seed=<seed>. Optional: -Dsponge.radiusBlocks, -Dsponge.maxResults, -Dsponge.batchSize."
+    description = "Run coords -> batch analyses -> merge (single command). Requires -Dsponge.seed=<seed>. Optional: -Dsponge.radiusBlocks, -Dsponge.excludeRadiusBlocks, -Dsponge.maxResults, -Dsponge.batchSize."
 
     doLast {
         def seed = System.getProperty("sponge.seed")
@@ -114,8 +114,23 @@ tasks.register("runAll") {
         }
 
         def radiusBlocks = System.getProperty("sponge.radiusBlocks", "20000")
+        def excludeRadiusBlocks = System.getProperty("sponge.excludeRadiusBlocks", "0") // Optional exclude radius (square), default 0
         def maxResults  = System.getProperty("sponge.maxResults", "100000")
         def batchSize   = Integer.parseInt(System.getProperty("sponge.batchSize", "1000"))
+
+        // Validate exclude radius (must be 0..radiusBlocks)
+        try {
+            long r = Long.parseLong(radiusBlocks)
+            long ex = Long.parseLong(excludeRadiusBlocks)
+            if (ex < 0) {
+                throw new GradleException("-Dsponge.excludeRadiusBlocks must be >= 0")
+            }
+            if (ex > r) {
+                throw new GradleException("-Dsponge.excludeRadiusBlocks (${ex}) must be <= -Dsponge.radiusBlocks (${r})")
+            }
+        } catch (NumberFormatException ignored) {
+            throw new GradleException("-Dsponge.radiusBlocks and -Dsponge.excludeRadiusBlocks must be valid integers")
+        }
 
         // Internal paths/files (not user-facing; keep stable to avoid confusing players)
         def outDir     = SPONGE_REPO_DIR
@@ -127,6 +142,7 @@ tasks.register("runAll") {
         def common = [
             "-Dsponge.seed=${seed}",
             "-Dsponge.radiusBlocks=${radiusBlocks}",
+            "-Dsponge.excludeRadiusBlocks=${excludeRadiusBlocks}",
             "-Dsponge.maxResults=${maxResults}",
             "-Dsponge.batchSize=${batchSize}",
             "-Dsponge.outDir=${outDir}",
@@ -189,6 +205,103 @@ tasks.register("runAll") {
             }
         } catch (Throwable t) {
             logger.lifecycle("[SpongeMonument] Cleanup skipped: " + t.getMessage())
+        }
+
+        // 5) Optional Xaero waypoint export (controlled by JVM -Dsponge.* args)
+        def xaeroExport = System.getProperty("sponge.xaeroExport", "0")
+        // Robust: anything other than explicit "0" enables export.
+        if (xaeroExport != "0") {
+            def xaeroMinRooms = 4
+            try {
+                xaeroMinRooms = Integer.parseInt(System.getProperty("sponge.xaeroMinRooms", "4"))
+            } catch (Exception e) {
+                logger.lifecycle("[SpongeMonument] (xaero) Invalid -Dsponge.xaeroMinRooms, using 4")
+            }
+            def xaeroDims = System.getProperty("sponge.xaeroDims", "overworld").toLowerCase()
+            def allowedDims = ["overworld", "nether", "both"]
+            if (!allowedDims.contains(xaeroDims)) {
+                logger.lifecycle("[SpongeMonument] (xaero) Invalid -Dsponge.xaeroDims, using 'overworld'")
+                xaeroDims = "overworld"
+            }
+            def xaeroColor = 11
+            try {
+                xaeroColor = Integer.parseInt(System.getProperty("sponge.xaeroColor", "11"))
+                if (xaeroColor < 0 || xaeroColor > 15) {
+                    logger.lifecycle("[SpongeMonument] (xaero) -Dsponge.xaeroColor must be between 0 and 15, using 11")
+                    xaeroColor = 11
+                }
+            } catch (Exception e) {
+                logger.lifecycle("[SpongeMonument] (xaero) Invalid -Dsponge.xaeroColor, using 11")
+                xaeroColor = 11
+            }
+            def resultsFile = new File(outDir, "results.csv")
+            if (!resultsFile.exists() || resultsFile.length() == 0) {
+                logger.lifecycle("[SpongeMonument] (xaero) results.csv missing or empty; skipping Xaero export.")
+            } else {
+                def resultLines = resultsFile.readLines("UTF-8")
+                if (resultLines.size() <= 1) {
+                    logger.lifecycle("[SpongeMonument] (xaero) results.csv empty; skipping Xaero export.")
+                } else {
+                    // Parse header to find columns
+                    def header = resultLines[0].split(",")
+                    def xIdx = header.findIndexOf { it.trim() == "x" }
+                    def zIdx = header.findIndexOf { it.trim() == "z" }
+                    def roomIdx = header.findIndexOf { it.trim() == "inferred_sponge_rooms" }
+                    if (xIdx == -1 || zIdx == -1 || roomIdx == -1) {
+                        logger.lifecycle("[SpongeMonument] (xaero) results.csv missing required columns; skipping Xaero export.")
+                    } else {
+                        def overworldWpts = []
+                        def netherWpts = []
+                        for (int i = 1; i < resultLines.size(); ++i) {
+                            def row = resultLines[i].split(",")
+                            if (row.size() <= Math.max(xIdx, Math.max(zIdx, roomIdx))) continue
+                            def x = 0
+                            def z = 0
+                            def rooms = 0
+                            try {
+                                x = Integer.parseInt(row[xIdx].trim())
+                                z = Integer.parseInt(row[zIdx].trim())
+                                rooms = Integer.parseInt(row[roomIdx].trim())
+                            } catch (Exception e) {
+                                continue
+                            }
+                            if (rooms < xaeroMinRooms) continue
+                            // Overworld waypoint
+                            if (xaeroDims == "overworld" || xaeroDims == "both") {
+                                def owLine = "waypoint:${rooms}:${rooms}:${x}:63:${z}:${xaeroColor}:false:0:gui.xaero_default:false:0:0"
+                                overworldWpts << owLine
+                            }
+                            // Nether waypoint (coords divided by 8, floored)
+                            if (xaeroDims == "nether" || xaeroDims == "both") {
+                                def nx = (int)Math.floor(x / 8.0)
+                                def nz = (int)Math.floor(z / 8.0)
+                                def netherLine = "waypoint:${rooms}:${rooms}:${nx}:128:${nz}:${xaeroColor}:false:0:gui.xaero_default:false:0:0"
+                                netherWpts << netherLine
+                            }
+                        }
+                        if ((xaeroDims == "overworld" || xaeroDims == "both") && overworldWpts.size() > 0) {
+                            def owFile = new File(outDir, "overworld_waypoints.txt")
+                            owFile.withWriter("UTF-8") { w ->
+                                overworldWpts.each { w.writeLine(it) }
+                            }
+                            logger.lifecycle("[SpongeMonument] (xaero) Wrote ${overworldWpts.size()} overworld waypoints to ${owFile.name}")
+                        }
+                        if ((xaeroDims == "nether" || xaeroDims == "both") && netherWpts.size() > 0) {
+                            def nFile = new File(outDir, "nether_waypoints.txt")
+                            nFile.withWriter("UTF-8") { w ->
+                                netherWpts.each { w.writeLine(it) }
+                            }
+                            logger.lifecycle("[SpongeMonument] (xaero) Wrote ${netherWpts.size()} nether waypoints to ${nFile.name}")
+                        }
+                        if ((xaeroDims == "overworld" || xaeroDims == "both") && overworldWpts.size() == 0) {
+                            logger.lifecycle("[SpongeMonument] (xaero) No overworld waypoints to write (filtered by minRooms?)")
+                        }
+                        if ((xaeroDims == "nether" || xaeroDims == "both") && netherWpts.size() == 0) {
+                            logger.lifecycle("[SpongeMonument] (xaero) No nether waypoints to write (filtered by minRooms?)")
+                        }
+                    }
+                }
+            }
         }
     }
 }

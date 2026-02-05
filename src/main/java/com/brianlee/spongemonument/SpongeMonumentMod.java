@@ -147,12 +147,22 @@ public class SpongeMonumentMod implements ModInitializer {
         LOGGER.info("[SpongeMonument] Server started. Overworld seed = {}", actualSeed);
 
         int radiusBlocks = Integer.getInteger("sponge.radiusBlocks", 20000);
-        int maxResults = Integer.getInteger("sponge.maxResults", 100);
+        int maxResults = Integer.getInteger("sponge.maxResults", 100000);
         int batchSize = Integer.getInteger("sponge.batchSize", 1000);
+
+        int excludeRadiusBlocks = Integer.getInteger("sponge.excludeRadiusBlocks", 0);
+        if (excludeRadiusBlocks < 0) {
+            LOGGER.warn("[SpongeMonument] sponge.excludeRadiusBlocks={} is < 0; clamping to 0", excludeRadiusBlocks);
+            excludeRadiusBlocks = 0;
+        }
+        if (excludeRadiusBlocks > radiusBlocks) {
+            LOGGER.warn("[SpongeMonument] sponge.excludeRadiusBlocks={} is > sponge.radiusBlocks={}; clamping to {}", excludeRadiusBlocks, radiusBlocks, radiusBlocks);
+            excludeRadiusBlocks = radiusBlocks;
+        }
 
         // Internal orchestration for Gradle's runAll task.
         // Users should not need to set these manually.
-        String mode = System.getProperty("sponge.mode", "coords").trim().toLowerCase();
+        String mode = System.getProperty("sponge.mode", "coords").trim().toLowerCase(); // If for debugging, change the second parameter. Available options: analyze|coords|merge
         int batchStart = Integer.getInteger("sponge.batchStart", 0);
 
         // Output files always live at the project root (same convention as results.csv).
@@ -174,9 +184,10 @@ public class SpongeMonumentMod implements ModInitializer {
         Path candidatesPath = baseDir.resolve("candidates.csv");
 
         LOGGER.info(
-                "[SpongeMonument] mode={} radiusBlocks={} maxResults={} batchStart={} batchSize={}",
+                "[SpongeMonument] mode={} radiusBlocks={} excludeRadiusBlocks={} maxResults={} batchStart={} batchSize={}",
                 mode,
                 radiusBlocks,
+                excludeRadiusBlocks,
                 maxResults,
                 batchStart,
                 batchSize
@@ -189,6 +200,7 @@ public class SpongeMonumentMod implements ModInitializer {
                     overworld,
                     center,
                     radiusBlocks,
+                    excludeRadiusBlocks,
                     maxResults,
                     candidatesPath
             );

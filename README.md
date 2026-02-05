@@ -10,7 +10,7 @@ Sponge rooms are the primary source of wet sponges in survival gameplay. Sponges
 From empirical analysis of thousands of monuments:
 - Out of 50000 monuments, **~11299 contained zero sponge rooms**, which is roughly **22.598% of monuments with no sponge rooms at all**
 - This means roughly 93.534% monuments contain **0–3 sponge rooms**. This also means **getting 4+ sponge rooms are rarer.**
-- The most common number of sponge rooms that I calculated is **1, with an experimental probability of 32.975%, followed by 2 (25.220%), 0 (22.597%), and then 3 (12.741%).**
+- The most common number of sponge rooms that I calculated is **1, with an experimental probability of 32.975%, followed by 2 (25.220%), 0 (22.598%), and then 3 (12.741%).**
 - Currently, SpongeAnalyzer identified a monument with **10 sponge rooms**, exceeding commonly assumed limits (some people asserted the max is 7, but now it is changed). 
 
 Before this tool exists, you had no way of knowing whether the monument has sponge rooms. Chances are you could get unlucky, for example, for raiding 10 ocean monuments that has no sponge rooms, only getting 30 wet sponges in return.
@@ -19,7 +19,7 @@ Before this tool exists, you had no way of knowing whether the monument has spon
 
 ## Why Sponge Rooms Matter
 
-- There is exactly 3 Elder Guardians in each monument, and each Elder Guardian only drops **one wet sponge each**
+- There is exactly 3 Elder Guardians in each monument, and each Elder Guardian only drops **one wet sponge each for player kill**
 - Looting enchantment does **not** increase sponge drops
 - Large-scale water removal requires **dozens or hundreds** of sponges. Clearing with sand/gravel and then digging them would also take more time.
 - Raiding monuments without sponge rooms is not only unlucky but also often a waste of time
@@ -69,6 +69,7 @@ This discovery enables **fast, deterministic sponge room inference** directly fr
    - Count `SimpleRoomTop` structure pieces to infer sponge rooms.
 4. **Combine batch results** into a final `results.csv`.
 5. **Output sponge room distribution and estimated total wet sponges**, considering elder guardian drops.
+6. **[OPTIONAL] Output Xaero's waypoints**, helping you go to the location identified with number of sponge rooms.
 
 ---
 
@@ -169,7 +170,16 @@ SpongeAnalyzer requires **Java 21** to run correctly. Ensure your system has Jav
 Use the `runAll` Gradle task to perform analysis (do not include []):
 
 ```bash
-./gradlew -Dsponge.seed=<WORLD_SEED> [-Dsponge.radiusBlocks=<RADIUS>] [-Dsponge.maxResults=<MAX_RESULTS>] [-Dsponge.batchSize=<BATCH_SIZE>] runAll
+./gradlew -Dsponge.seed=<WORLD_SEED> \
+          [-Dsponge.radiusBlocks=<RADIUS>] \
+          [-Dsponge.excludeRadiusBlocks=<INNER_RADIUS>] \
+          [-Dsponge.maxResults=<MAX_RESULTS>] \
+          [-Dsponge.batchSize=<BATCH_SIZE>] \
+          [-Dsponge.xaeroExport=<0|(any number)>] \
+          [-Dsponge.xaeroMinRooms=<MIN_ROOMS>] \
+          [-Dsponge.xaeroDims=<overworld|nether|both>] \
+          [-Dsponge.xaeroColor=<0|1|2|3|4|5|6|7|8|9|10|11|12|13|14|15>]
+          runAll
 ```
 
 ### Arguments
@@ -178,8 +188,14 @@ Use the `runAll` Gradle task to perform analysis (do not include []):
 |---------------------------|------------------------------------------------------------------------------------------------|------------|
 | `-Dsponge.seed`            | **Required.** The Minecraft world seed to analyze (must be a number).                                             | N/A        |
 | `-Dsponge.radiusBlocks`    | Search radius in blocks (as a square) around the world origin (0,0).                                         | 20000     |
+| `-Dsponge.excludeRadiusBlocks` | Inner square radius (in blocks) to exclude from the search. Enables ring-based scans for large worlds. | 0 (full square)          |
 | `-Dsponge.maxResults`      | Maximum number of ocean monuments to analyze.                                                  | 100000        |
 | `-Dsponge.batchSize`       | Number of monument coordinates processed per batch to control memory usage and avoid heap errors. | 1000       |
+| `-Dsponge.xaeroExport`     | Option to export Xaero's waypoints (recommended if you want to quickly get sponges via travelling). | 0 (disables export) |
+|`-Dsponge.xaeroMinRooms` | **[Requires -Dsponge.xaeroExport to be enabled. Otherwise, it does nothing]** A minimum sponge rooms threshold. Anything below it will not be recorded. _Note: You can set to 0 if you want to log all rooms, though there will be too many coordinates._| 4|
+|`-Dsponge.xaeroDims` | **[Requires -Dsponge.xaeroExport to be enabled. Otherwise, it does nothing]** Specifies which dimension you want to record Xaero's waypoints. | overworld |
+|`-Dsponge.xaeroColor`| **[Requires -Dsponge.xaeroExport to be enabled. Otherwise, it does nothing]** Specifies which color you want for waypoints' label (0=black, 1=dark blue, 2=dark green, 3=dark aqua, 4=dark red, 5=dark purple, 6=gold, 7=gray, 8=dark gray, 9=blue, 10=green, 11=aqua, 12=red, 13=light purple, 14=yellow, 15=white).| 11 (aqua)|
+
 
 Example:
 
@@ -192,6 +208,24 @@ This command:
 - searches the square with endpoints (-10k, -10k), (-10k, 10k), (10k, -10k), and (10k, 10k).
 - sets the ocean monument threshold to 10000 (so if there are more ocean monuments in the selected radius than its threshold, then it does not consider the remaining ocean monuments)
 - sets the `batchSize` to 500, meaning that we partition the whole list from `candidates.csv` into batches of 500 coordinates, then analyze each batch and save into `results_part_*.csv`, where * represents the batch index.
+- does not export Xaero's waypoints because `-Dsponge.xaeroExport` is set to 0 by default.
+
+Another example:
+
+```bash
+./gradlew -Dsponge.seed=-2381971292186592288 -Dsponge.radiusBlocks=20000 -Dsponge.excludeRadiusBlocks=5000 -Dsponge.maxResults=1000 -Dsponge.batchSize=1000 -Dsponge.xaeroExport=1 -Dsponge.xaeroMinRooms=3 -Dsponge.xaeroDims=nether -Dsponge.xaeroColor=13
+```
+
+This command:
+- sets seed to -2381971292186592288
+- searches the square with endpoints (-20k, -20k), (-20k, 20k), (20k, -20k), and (20k, 20k).
+- excludes the region square with endpoints (-5k, -5k), (-5k, 5k), (5k, -5k), and (5k, 5k).
+- sets the ocean monument threshold to 1000 (so if there are more ocean monuments in the selected radius than its threshold, then it does not consider the remaining ocean monuments)
+- sets the `batchSize` to 1000, meaning that we partition the whole list from `candidates.csv` into batches of 1000 coordinates, then analyze each batch and save into `results_part_*.csv`, where * represents the batch index.
+- allows exporting Xaero's waypoints.
+- sets minimum number of sponge rooms to 3, meaning that any ocean monuments with 2 sponge rooms or less will not be added to the waypoints.
+- records Nether coordinates
+- sets the waypoints' color to light purple
 
 **Note:** You will notice that `candidates.csv` and `results_part_*.csv` are produced during the run. **Do not delete them during the run: they are needed so that once all candidates from `candidates.csv` are verified, the tool merges `results_part_*.csv` into a `result.csv`, then automatically deletes `candidates.csv` and all `results_part_*.csv`.**
 
@@ -200,6 +234,25 @@ This command:
 - Processing large numbers of monuments at once can cause heap memory errors.
 - Adjust `batchSize` to a value suitable for your system's RAM.
 - Smaller batches reduce memory footprint but increase total runtime. *I highly recommend fine tuning the batch size.*
+
+### Ring-Based Searches (excludeRadiusBlocks)
+
+For very large searches (e.g. 100k–1M blocks), scanning the entire square at once is inefficient.
+You can exclude an inner square region and effectively scan a **ring** instead.
+
+Example:
+```bash
+./gradlew -Dsponge.seed=12345 \
+          -Dsponge.radiusBlocks=200000 \
+          -Dsponge.excludeRadiusBlocks=100000 \
+          runAll
+```
+
+This scans only monuments between 100k and 200k blocks from the origin.
+This approach:
+- Reduces runtime per pass
+- Improves cache locality
+- Avoids unnecessary re-scanning
 
 ---
 
@@ -225,6 +278,8 @@ Example:
 
 Results are sorted by descending sponge room count, then by ascending distance from the origin.
 
+**Tip:** I highly recommend saving the `results.csv` into a different folder (preferably outside of the root folder) or renaming it because if you rerun, it will overwrite it.
+
 In the terminal, you will see the sponge room distribution and estimated total wet sponges, like this:
 
 ```
@@ -249,6 +304,51 @@ In the terminal, you will see the sponge room distribution and estimated total w
 ## Biome-Filter False Positives
 
 Due to biome filtering limitations, approximately **0.2%** of candidate coordinates may be false positives (i.e., not actual ocean monuments). This is a minor caveat and does not significantly affect overall analysis accuracy.
+
+---
+
+## Xaero’s Minimap Waypoint Export
+
+SpongeAnalyzer can optionally export results as **Xaero’s Minimap / World Map waypoints**.
+
+This is useful if you want in-game navigation to high-value monuments.
+
+### Export Options
+
+- Export scope:
+  - `overworld` → writes `overworld_waypoints.txt` (or overwrites if it exists)
+  - `nether` → writes `nether_waypoints.txt` (or overwrites if it exists)
+  - `both` → writes both files (or overwrites if both exist)
+
+- Minimum sponge rooms:
+  - Use `-Dsponge.xaeroMinRooms` to export only monuments with at least N sponge rooms
+  - Example: `4` is recommended if you only want efficient sponge farms
+
+### Coordinate Details
+
+- Overworld waypoints use **Y = 63**
+- Nether waypoints use **Y = 128** (recommended for travel above the nether roof)
+- Nether coordinates are automatically scaled by ÷8
+- Waypoint labels are the **number of sponge rooms**, colored **aqua** to match ocean monuments
+
+Example:
+```bash
+./gradlew -Dsponge.seed=-1789333 \
+          -Dsponge.radiusBlocks=10000 \
+          -Dsponge.xaeroExport=both \
+          -Dsponge.xaeroMinRooms=4 \
+          runAll
+```
+
+After the run completes, copy the generated waypoint files into:
+```
+.minecraft/XaeroWaypoints/
+```
+or
+```
+.minecraft/xaero/minimap/<your world>/dim%<-1|0>
+```
+(or the equivalent directory for your launcher/modpack).
 
 ---
 
@@ -285,7 +385,8 @@ Saving thousands of generated chunks can take **longer than the analysis itself*
 
 6. **I am getting the `Failed to load eula.txt` error:** Head to `run/eula.txt`. Replace `eula=false` to `eula=true`. Save and rerun the command.
 
-7. **Why is `runServer` no longer used:** The previous `runServer` command is deprecated for normal users. `runAll` provides a streamlined, fully automated analysis workflow. Also, `runServer` command does not work if you increase the `-Dsponge.maxResults` and `-Dsponge.radiusBlocks` threshold due to the heap error.
+7. **Why is `runServer` no longer used:** The previous `runServer` command is deprecated for normal users. `runAll` provides a streamlined, fully automated analysis workflow. Also, `runServer` command does not work if you increase the `-Dsponge.maxResults` and `-Dsponge.radiusBlocks` threshold due to the heap error. `runServer` should only be used for development or debugging. End users should always use `runAll`.
+
 8. **Can this tool run without internet:** yes. Even loading the Fabric server can be done offline.
 
 ---
