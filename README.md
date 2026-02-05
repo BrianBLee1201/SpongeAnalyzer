@@ -200,7 +200,7 @@ Use the `runAll` Gradle task to perform analysis (do not include []):
 Example:
 
 ```bash
-./gradlew -Dsponge.seed=-1789333 -Dsponge.radiusBlocks=10000 -Dsponge.maxResults=10000 -Dsponge.batchSize=500
+./gradlew -Dsponge.seed=-1789333 -Dsponge.radiusBlocks=10000 -Dsponge.maxResults=10000 -Dsponge.batchSize=500 runAll
 ```
 
 This command:
@@ -213,7 +213,7 @@ This command:
 Another example:
 
 ```bash
-./gradlew -Dsponge.seed=-2381971292186592288 -Dsponge.radiusBlocks=20000 -Dsponge.excludeRadiusBlocks=5000 -Dsponge.maxResults=1000 -Dsponge.batchSize=1000 -Dsponge.xaeroExport=1 -Dsponge.xaeroMinRooms=3 -Dsponge.xaeroDims=nether -Dsponge.xaeroColor=13
+./gradlew -Dsponge.seed=-2381971292186592288 -Dsponge.radiusBlocks=20000 -Dsponge.excludeRadiusBlocks=5000 -Dsponge.maxResults=1000 -Dsponge.batchSize=1000 -Dsponge.xaeroExport=1 -Dsponge.xaeroMinRooms=3 -Dsponge.xaeroDims=nether -Dsponge.xaeroColor=13 runAll
 ```
 
 This command:
